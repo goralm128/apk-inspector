@@ -15,7 +15,7 @@ APK Inspector is a Python-based toolkit designed to:
 - Modular codebase (utilities, Frida scripts, main runner)
 
 ## Project Structure
-
+```
 apk-inspector/
 ├── apks/ # Input APKs (excluded from Git)
 ├── frida_hooks/ # Frida JavaScript hook files
@@ -23,7 +23,7 @@ apk-inspector/
 ├── output/ # JSON results from tracing
 ├── main.py # Entry point for processing
 └── README.md
-
+```
 ## Requirements
 
 - Python 3.10+
