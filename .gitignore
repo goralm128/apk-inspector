@@ -28,3 +28,6 @@ htmlcov/
 
 # Editor settings
 .vscode/
+
+# APK files
+apks/*
