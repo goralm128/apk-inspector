@@ -1,4 +1,5 @@
 import json
+import logging
 from pathlib import Path
 from unittest.mock import patch
 from apk_inspector.core import APKInspector
@@ -16,10 +17,15 @@ def test_run_analysis_open_hook_creates_expected_json(mock_save, mock_install, m
     if test_output_file.exists():
         test_output_file.unlink()  # ensure clean slate
 
+    # Create a logger that doesn't output to consol
+    logger = logging.getLogger("test_logger")
+    logger.addHandler(logging.NullHandler())  # Prevent actual output
+
     inspector = APKInspector(
         hooks_dir=Path("apk_inspector/frida_hooks"),
         apk_dir=Path("apks"),
-        output_file=test_output_file
+        output_file=test_output_file,
+        logger=logger
     )
 
     inspector.run("open", include_private=False, timeout=5)

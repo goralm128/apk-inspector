@@ -1,0 +1,42 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "array",
+  "items": {
+    "type": "object",
+    "required": ["id", "description", "category", "weight", "condition"],
+    "properties": {
+      "id": {
+        "type": "string"
+      },
+      "description": {
+        "type": "string"
+      },
+      "category": {
+        "type": "string"
+      },
+      "weight": {
+        "type": "number",
+        "minimum": 1
+      },
+      "cvss": {
+        "type": "number",
+        "minimum": 0,
+        "maximum": 10
+      },
+      "severity": {
+        "type": "string",
+        "enum": ["low", "medium", "high"]
+      },
+      "tags": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        }
+      },
+      "condition": {
+        "type": "string"
+      }
+    },
+    "additionalProperties": false
+  }
+}

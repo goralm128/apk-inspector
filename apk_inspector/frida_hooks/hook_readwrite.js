@@ -49,6 +49,7 @@ function trackFdOp(symbol, pathArgIndex) {
     if (addr) {
         Interceptor.attach(addr, {
             onEnter(args) {
+                console.log(`${symbol} called`);
                 this.path = Memory.readUtf8String(args[pathArgIndex]);
             },
             onLeave(retval) {
@@ -68,6 +69,7 @@ function trackFdOp(symbol, pathArgIndex) {
 
 safeAttach("read", {
     onEnter(args) {
+        console.log("read called");
         this.fd = args[0].toInt32();
         this.buf = args[1];
     },
@@ -80,6 +82,7 @@ safeAttach("read", {
 
 safeAttach("write", {
     onEnter(args) {
+        console.log("write called");
         const fd = args[0].toInt32();
         const buf = args[1];
         const len = args[2].toInt32();
@@ -92,6 +95,7 @@ safeAttach("write", {
 
 safeAttach("readv", {
     onEnter(args) {
+        console.log("readv called");
         this.fd = args[0].toInt32();
         this.iov = args[1];
         this.iovcnt = args[2].toInt32();
@@ -111,6 +115,7 @@ safeAttach("readv", {
 
 safeAttach("writev", {
     onEnter(args) {
+        console.log("writev called");
         this.fd = args[0].toInt32();
         const iov = args[1];
         const iovcnt = args[2].toInt32();
@@ -130,6 +135,7 @@ safeAttach("writev", {
 
 safeAttach("fread", {
     onEnter(args) {
+        console.log("fread called");
         this.ptr = args[0];
         this.size = args[1].toInt32();
         this.nmemb = args[2].toInt32();
@@ -144,6 +150,7 @@ safeAttach("fread", {
 
 safeAttach("fwrite", {
     onEnter(args) {
+        console.log("fwrite called");
         const ptr = args[0];
         const size = args[1].toInt32();
         const nmemb = args[2].toInt32();
@@ -157,6 +164,7 @@ safeAttach("fwrite", {
 ["read64", "write64", "fread64", "fwrite64"].forEach(name => {
     safeAttach(name, {
         onEnter(args) {
+            console.log(`${name} called`);
             this.args = args;
             this.fn = name;
         },

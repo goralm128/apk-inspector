@@ -9,7 +9,7 @@ from apk_inspector.utils.classifier import classify_path
     ("/storage/emulated/0/settings.json", "config"),
     ("/data/data/com.example/config.xml", "config"),
     ("/sdcard/DCIM/photo.jpg", "app_storage"),
-    ("/system/lib/libc.so", "system"),
+    ("/system/lib/libc.so", "system_access"),
     ("", "unknown"),
     (None, "unknown"),
     ("/data/data/com.example/random.bin", "app_storage"),

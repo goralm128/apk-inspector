@@ -1,0 +1,44 @@
+- id: R1
+  description: "Accessed sensitive file (e.g., token, secret, key)"
+  category: data_leak
+  weight: 5
+  severity: medium
+  condition: "event.get('classification') == 'sensitive'"
+  tags: ["privacy", "filesystem"]
+  cvss: 5.5
+
+- id: R2
+  description: "Connected to public IP address"
+  category: network
+  weight: 4
+  severity: medium
+  condition: "event.get('address', {}).get('is_private') == False"
+  tags: ["network", "external"]
+  cvss: 4.3
+
+- id: R3
+  description: "High-volume data transfer via write"
+  category: exfiltration
+  weight: 3
+  severity: low
+  condition: "event.get('event') == 'write' and event.get('length', 0) > 1024"
+  tags: ["exfiltration", "data"]
+  cvss: 4.8
+
+- id: R4
+  description: "Suspicious file access in system directory"
+  category: privilege_escalation
+  weight: 6
+  severity: high
+  condition: "event.get('classification') == 'system'"
+  tags: ["filesystem", "system"]
+  cvss: 6.1
+
+- id: R5
+  description: "Runtime connection to suspicious domain"
+  category: c2
+  weight: 7
+  severity: high
+  condition: "'example.com' in event.get('data', '')"
+  tags: ["c2", "dns"]
+  cvss: 6.5

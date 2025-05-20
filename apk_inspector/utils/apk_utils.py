@@ -127,9 +127,40 @@ def install_apks(folder_path: str) -> List[str]:
 
 # ---------------- Save Analysis Results ----------------
 
-def save_results(package_name: str, events: list):
+def save_results(package_name: str, events: list, score: int = None,
+                 verdict: str = None, yara_matches: list = None, reasons: list = None):
     """
-    Saves events for the specified package to a JSON file in the output directory.
+    Saves events and optional metadata (score, verdict, reasons, YARA matches)
+    for the specified package to a JSON file.
+    Returns the path to the saved file.
+    """
+    output_dir = Path("output")
+    output_dir.mkdir(exist_ok=True)
+
+    result_data = {
+        "package": package_name,
+        "events": events,
+    }
+
+    if score is not None:
+        result_data["score"] = score
+    if verdict:
+        result_data["verdict"] = verdict
+    if yara_matches:
+        result_data["yara_matches"] = yara_matches
+    if reasons:
+        result_data["reasons"] = reasons
+
+    output_path = output_dir / f"{package_name}.json"
+    with output_path.open("w", encoding="utf-8") as f:
+        json.dump(result_data, f, indent=2, ensure_ascii=False)
+
+    print(f"[✓] Results saved to {output_path.resolve()}")
+    return output_path.resolve()
+
+    """
+    Saves events and optional metadata (score, verdict, YARA matches) for the specified package to a JSON file.
+    Returns the path to the saved file.
     """
     output_dir = Path("output")
     output_dir.mkdir(exist_ok=True)
@@ -139,8 +170,17 @@ def save_results(package_name: str, events: list):
         "events": events
     }
 
+    if score is not None:
+        result_data["score"] = score
+    if verdict is not None:
+        result_data["verdict"] = verdict
+    if yara_matches:
+        result_data["yara_matches"] = yara_matches
+
     output_path = output_dir / f"{package_name}.json"
     with output_path.open("w", encoding="utf-8") as f:
-        json.dump(result_data, f, indent=2)
+        json.dump(result_data, f, indent=2, ensure_ascii=False)
 
     print(f"[✓] Results saved to {output_path.resolve()}")
+    return output_path.resolve()
+

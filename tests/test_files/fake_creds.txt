@@ -1,0 +1,1 @@
+This file contains a hardcoded AWS key: AKIA1234567890ABCDEF
