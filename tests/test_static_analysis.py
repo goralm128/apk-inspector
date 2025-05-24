@@ -1,7 +1,7 @@
-from apk_inspector.static_analysis.manifest_analyzer import analyze_manifest
-from apk_inspector.static_analysis.string_extractor import extract_suspicious_strings
-from apk_inspector.static_analysis.cert_analyzer import analyze_certificate
-from apk_inspector.static_analysis.static_runner import run_static_analysis
+from apk_inspector.analysis.static.manifest_analyzer import analyze_manifest
+from apk_inspector.analysis.static.string_extractor import extract_suspicious_strings
+from apk_inspector.analysis.static.cert_analyzer import analyze_certificate
+from apk_inspector.analysis.static.static_runner import run_static_analysis
 from pathlib import Path
 import tempfile
 import shutil

@@ -22,26 +22,6 @@
 
 ---
 
-## Analysis Output
-
-After each run, results are saved in:
-
-### 1. Per-App Reports
-
-Located in `output/`, each JSON file contains the app's events, score, verdict, and YARA matches.
-  
-    output/
-    ├── com.example.app.json
-    ├── net.sample.notes.json
-    └── ...
-   
-### 2. Aggregated Report
-
-All results are combined in a single file:
-output/results.json
-
----
-
 ## Getting Started
 
 ### 1. Prerequisites
@@ -100,10 +80,16 @@ pip install frida-tools
 
 ### 4. Running the Tool
 
-To run analysis with a specific Frida hook (e.g., readwrite), use:
+Install the tool and its dependencies:
 
 ```bash
-python -m apk_inspector.main --hook readwrite --timeout 30
+pip install .
+```
+
+To run analysis use:
+
+```bash
+apk-inspector --apk-dir apks --output-dir output --hooks-dir frida_hooks
 ```
 
 **Options:**
@@ -111,31 +97,6 @@ python -m apk_inspector.main --hook readwrite --timeout 30
 - `--hook <name>`: Select which hook to use (`readwrite`, `network`, etc.)
 - `--timeout <seconds>`: Duration to trace app activity
 - `--include-private`: Include private IPs in output (for network analysis)
-
----
-
-## YARA Integration 
-
-Place .yar rules in yara_rules/.
-Example YARA rules can detect:
-- AWS credentials (access key + secret)
-- Firebase database URLs
-- Other hardcoded secrets or keys
-You can customize and add new rules easily.
-
-### Automated YARA Test Assets
-The repository includes pre-built test rules and files in:
-
-```text
-tests/
-├── test_rules/      ← Contains YARA rules like `aws_test.yar`
-├── test_files/      ← Contains matching files like `fake_creds.txt`
-
-These are used for:
-
-Unit testing the YARA engine
-CI/CD validation of rule matching
-Validating scan_with_yara() functionality
 
 ---
 
@@ -148,66 +109,11 @@ Each app is evaluated using a rule engine that assigns a suspicion score based o
 - Communication with public IPs
 - High-volume data transfers
 
-| Score Range | Verdict     |
-|-------------|-------------|
-| > 10        | Malicious   |
-| 6–10        | Suspicious  |
-| < 6         | Benign      |
-
----
-
-## Testing & Development
-You can run tests and manage development tools with either Python or Make:
-### Using Python (cross-platform)
-
-```bash
-python tools/dev.py setup     # Generate test assets
-python tools/dev.py test      # Run all tests
-python tools/dev.py clean     # Delete test artifacts
-```
-
-### Using Make (Linux/macOS, or Git Bash on Windows)
-
-```bash
-make setup
-make test
-make clean
-```
-
 ## Troubleshooting
 
 - Frida not attaching? Check Frida server version matches Python version.
 - Device not found? Run adb devices, enable USB debugging.
 - YARA not working? Ensure yara CLI or libyara is installed.
-
----
-
-## Project Structure
-
-    apk-inspector/
-    ├── apk_inspector/
-    │   ├── main.py
-    │   ├── core.py
-    │   ├── cli.py
-    │   └── utils/
-    │       ├── adb_tools.py
-    │       ├── apk_utils.py
-    │       ├── classifier.py
-    │       ├── file_utils.py
-    │       ├── frida_utils.py
-    │       ├── hook_utils.py
-    │       ├── rule_engine.py
-    │       ├── yara_scanner.py
-    │       └── decompiler.py
-    ├── frida_hooks/
-    │   ├── hook_readwrite.js
-    │   ├── hook_network.js
-    ├── apks/
-    ├── output/
-    ├── yara_rules/
-    │   └── aws_keys.yar
-    ├── requirements.txt
-    └── README.md
 
 ---
 

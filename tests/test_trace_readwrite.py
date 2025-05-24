@@ -1,6 +1,6 @@
 import pytest
 from apk_inspector.utils.file_utils import deduplicate_events
-from apk_inspector.utils.classifier import classify_path
+from apk_inspector.analysis.data_classifier import classify_path
 
 sample_events = [
     {

@@ -2,7 +2,7 @@ import json
 import logging
 from pathlib import Path
 from unittest.mock import patch
-from apk_inspector.core import APKInspector
+from apk_inspector.core.core_controller import APKInspector
 
 @patch("apk_inspector.core.trace_frida_events")
 @patch("apk_inspector.core.install_apks")
@@ -22,7 +22,7 @@ def test_run_analysis_open_hook_creates_expected_json(mock_save, mock_install, m
     logger.addHandler(logging.NullHandler())  # Prevent actual output
 
     inspector = APKInspector(
-        hooks_dir=Path("apk_inspector/frida_hooks"),
+        hooks_dir=Path("frida_hooks"),
         apk_dir=Path("apks"),
         output_file=test_output_file,
         logger=logger

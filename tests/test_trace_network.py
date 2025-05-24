@@ -1,8 +1,8 @@
 import logging
 from pathlib import Path
 from unittest.mock import patch
-from apk_inspector.core import APKInspector
-from apk_inspector.utils.rule_engine import Verdict
+from apk_inspector.core.core_controller import APKInspector
+from apk_inspector.rules.rule_engine import Verdict
 
 
 @patch("apk_inspector.core.RuleEngine.evaluate")
@@ -35,7 +35,7 @@ def test_run_analysis_network_hook_includes_private_ips(mock_save, mock_install,
     logger.addHandler(logging.NullHandler())
 
     inspector = APKInspector(
-        hooks_dir=Path("apk_inspector/frida_hooks"),
+        hooks_dir=Path("frida_hooks"),
         apk_dir=Path("apks"),
         output_file=Path("output/test_results.json"),
         logger=logger

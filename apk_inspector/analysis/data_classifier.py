@@ -1,5 +1,3 @@
-# apk_inspector/utils/classifier.py
-
 from pathlib import Path
 import re
 

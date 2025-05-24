@@ -1,44 +1,32 @@
 import json
-import ipaddress
+import logging
+from pathlib import Path
+from ipaddress import ip_address, ip_network
 
-def clear_output_file(path):
-    with open(path, "w", encoding="utf-8") as f:
-        f.write("[]")
+logger = logging.getLogger("APKInspector")
 
-def write_results(path, data):
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(data, f, indent=2)
+# ───────────────────────────────────────────────
+# Utility: Check if an IP is private/local
+# ───────────────────────────────────────────────
 
 def is_private_ip(ip_str):
     try:
-        ip = ipaddress.ip_address(ip_str)
-        return ip.is_private or ip.is_loopback or ip.is_link_local
+        ip = ip_address(ip_str)
+        return ip.is_private
     except ValueError:
+        logger.warning(f"Invalid IP address: {ip_str}")
         return False
-    
-def deduplicate_events(events, drop_failed_recvfrom=True, drop_af_unix=True):
+
+# ───────────────────────────────────────────────
+# Utility: Deduplicate captured events
+# ───────────────────────────────────────────────
+
+def deduplicate_events(events):
     seen = set()
     deduped = []
-
     for event in events:
-        if drop_failed_recvfrom and event.get("event") == "recvfrom" and event.get("length") == -1:
-            continue
-
-        address = event.get("address", {})
-        if drop_af_unix and address.get("family") == "AF_UNIX":
-            continue
-
-        # use `path` if available (e.g., from read/write events)
-        key = (
-            event.get("event"),
-            event.get("fd"),
-            event.get("path"),  # Use path instead of serialized address when available
-            event.get("length"),
-            event.get("data"),
-        )
-
+        key = json.dumps(event, sort_keys=True)
         if key not in seen:
-            seen.add(key)
             deduped.append(event)
-
+            seen.add(key)
     return deduped

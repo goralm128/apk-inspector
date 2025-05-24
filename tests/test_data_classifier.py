@@ -1,5 +1,5 @@
 import pytest
-from apk_inspector.utils.classifier import classify_path
+from apk_inspector.analysis.data_classifier import classify_path
 
 @pytest.mark.parametrize("path,expected", [
     ("/data/data/com.example/token.txt", "sensitive"),

@@ -1,52 +1,43 @@
-import frida
 import time
-from pathlib import Path
+import frida
 
-def trace_frida_events(package_name, frida_script_path, timeout=10):
+
+def trace_frida_events(package_name, script_path, timeout=10):
     events = []
-    pid = None  # Ensure pid exists for finally block
-
-    def on_message(message, data):
-        if message["type"] == "send":
-            events.append(message["payload"])
-        elif message["type"] == "error":
-            print(f"Frida error: {message['stack']}")
+    pid = None
+    session = None
 
     try:
-        print(f"Launching and hooking into: {package_name}")
-        device = frida.get_usb_device()
+        device = frida.get_usb_device(timeout=5)
         pid = device.spawn([package_name])
         session = device.attach(pid)
 
-        script_source = Path(frida_script_path).read_text()
-        script = session.create_script(script_source)
+        with open(script_path, "r", encoding="utf-8") as f:
+            script = session.create_script(f.read())
+
+        def on_message(message, data):
+            if message["type"] == "send":
+                payload = message["payload"]
+                if isinstance(payload, dict):
+                    events.append(payload)
+            elif message["type"] == "error":
+                print(f"[FRIDA ERROR] {message.get('stack', message)}")
+
         script.on("message", on_message)
-
-        print("Loading Frida script...")
         script.load()
+        device.resume(pid)
 
-        device.resume(pid)  # Resume after hook is loaded
-        print(f"Collecting events for {timeout} second(s)...")
         time.sleep(timeout)
 
-        session.detach()
-        return events
-
-    except frida.ProcessNotFoundError:
-        print(f" Failed to start or attach to: {package_name}")
-        return []
-
-    except frida.InvalidOperationError:
-        print(f" Invalid operation for: {package_name}")
-        return []
-
     except Exception as e:
-        print(f" An unexpected error occurred: {e}")
-        return []
-
+        print(f"[FRIDA ERROR] Tracing failed for {package_name}: {e}")
     finally:
-        if pid is not None:
-            try:
+        try:
+            if session:
+                session.detach()
+            if pid:
                 device.kill(pid)
-            except Exception as e:
-                print(f" Failed to kill process {pid}: {e}")
+        except Exception as cleanup_err:
+            print(f"[FRIDA WARNING] Cleanup failed for {package_name}: {cleanup_err}")
+
+    return events

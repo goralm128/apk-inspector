@@ -1,4 +1,4 @@
-from apk_inspector.utils.adb_tools import (
+from apk_inspector.core.adb_tools import (
     wake_and_unlock,
     launch_app,
     force_stop_app,

@@ -1,5 +1,5 @@
 import pytest
-from apk_inspector.utils.rule_engine import Rule, RuleEngine, Verdict
+from apk_inspector.rules.rule_engine import Rule, RuleEngine, Verdict
 
 
 def mock_event(tags=None, classification=None, ip=None, direction=None, bytes=0):
