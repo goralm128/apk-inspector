@@ -1,7 +1,5 @@
-import yaml
 from dataclasses import dataclass, field
 from typing import Callable, List, Dict, Tuple, Optional, Any
-from pathlib import Path
 
 @dataclass
 class Rule:
@@ -12,7 +10,7 @@ class Rule:
     condition: Callable[[dict], bool]
     tags: List[str] = field(default_factory=list)
     cvss: float = 0.0
-    severity: str = "medium"  # low | medium | high
+    severity: str = "medium"
 
 @dataclass
 class Verdict:
@@ -21,7 +19,7 @@ class Verdict:
     reasons: List[str]
 
 class RuleEngine:
-    def __init__(self, rules):
+    def __init__(self, rules: List[Rule]):
         self.rules = rules
 
     def evaluate(
@@ -30,47 +28,43 @@ class RuleEngine:
         static_info: Optional[Dict[str, Any]] = None,
         yara_hits: Optional[List[Dict[str, Any]]] = None
     ) -> Tuple[str, int, List[str]]:
-        verdict = "benign"
         score = 0
         reasons = []
 
-        # Dummy example: count number of events or static/yara-based logic
-        if static_info and static_info.get("manifest_analysis", {}).get("usesPermissions"):
-            score += 1
-            reasons.append("Uses suspicious permissions")
+        for event in events:
+            for rule in self.rules:
+                try:
+                    if rule.condition(event):
+                        score += rule.weight
+                        reasons.append(f"[{rule.severity.upper()}] Rule {rule.id}: {rule.description}")
+                except Exception as e:
+                    reasons.append(f"[WARN] Rule {rule.id} failed to evaluate: {e}")
+
+        if static_info:
+            if "SEND_SMS" in static_info.get("manifest_analysis", {}).get("usesPermissions", []):
+                score += 15
+                reasons.append("[HIGH] Uses SEND_SMS permission")
+            if static_info.get("reflection_usage"):
+                score += 10
+                reasons.append("[MEDIUM] Uses reflection")
+            if static_info.get("obfuscation_detected"):
+                score += 15
+                reasons.append("[HIGH] Obfuscation detected")
 
         if yara_hits:
-            matched_files = len(yara_hits)
-            if matched_files > 0:
-                score += matched_files
-                reasons.append(f"YARA matched {matched_files} files")
+            for hit in yara_hits:
+                severity = hit.get("meta", {}).get("severity", "medium").lower()
+                description = hit.get("meta", {}).get("description", hit.get("rule"))
+                severity_weight = {"low": 5, "medium": 10, "high": 20}.get(severity, 10)
+                score += severity_weight
+                reasons.append(f"[{severity.upper()}] YARA: {description}")
 
-        if score >= 5:
-            verdict = "malicious"
-        elif score > 0:
-            verdict = "suspicious"
+        label = self._label_from_score(score)
+        return label, min(score, 100), reasons
 
-        return verdict, score, reasons
-
-def safe_lambda(condition: str) -> Callable[[dict], bool]:
-    def func(event):
-        return eval(condition, {"__builtins__": {}}, {"event": event})
-    return func
-
-def load_rules_from_yaml(yaml_path: Path) -> List[Rule]:
-    with yaml_path.open(encoding="utf-8") as f:
-        raw_rules = yaml.safe_load(f)
-
-    rules = []
-    for entry in raw_rules:
-        rules.append(Rule(
-            id=entry["id"],
-            description=entry["description"],
-            category=entry["category"],
-            weight=entry["weight"],
-            condition=safe_lambda(entry["condition"]),
-            tags=entry.get("tags", []),
-            cvss=entry.get("cvss", 0.0),
-            severity=entry.get("severity", "medium"),
-        ))
-    return rules
+    def _label_from_score(self, score: int) -> str:
+        if score >= 80:
+            return "malicious"
+        elif score >= 40:
+            return "suspicious"
+        return "benign"

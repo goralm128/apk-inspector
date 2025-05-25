@@ -1,6 +1,5 @@
 import json
 import logging
-from pathlib import Path
 from ipaddress import ip_address, ip_network
 
 logger = logging.getLogger("APKInspector")

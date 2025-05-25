@@ -89,7 +89,7 @@ pip install .
 To run analysis use:
 
 ```bash
-apk-inspector --apk-dir apks --output-dir output --hooks-dir frida_hooks
+apk-inspector --apk-dir apks --output-dir output --hooks-dir hooks/payloads
 ```
 
 **Options:**

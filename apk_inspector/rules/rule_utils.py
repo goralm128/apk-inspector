@@ -2,6 +2,7 @@ import jsonschema
 import yaml
 from pathlib import Path
 
+
 # Define the JSON schema for the rules.yaml file
 # This schema is strict and requires all fields to be present and correctly typed.
 RULES_SCHEMA = {
@@ -50,3 +51,15 @@ def validate_rules_yaml(yaml_path: Path) -> None:
     except yaml.YAMLError as ye:
         print(f"[ERROR] Invalid YAML syntax: {ye}")
         raise
+
+
+def safe_lambda(condition: str):
+    def func(event):
+        return eval(condition, {"__builtins__": {}}, {"event": event})
+    return func
+
+def validate_rule_schema(rule_dict: dict) -> bool:
+    required = {"id", "description", "category", "condition", "weight"}
+    return required.issubset(rule_dict.keys())
+
+

@@ -35,12 +35,13 @@ class YaraScanner:
                 if file.is_file():
                     print(f"[DEBUG] Scanning file: {file}")
                     try:
-                        result = rule.match(filepath=str(file))
-                        if result:
-                            print(f"[MATCH] {file.name} → {result}")
+                       result = rule.match(filepath=str(file))
+                       for match in result:
                             matches.append({
                                 "file": str(file.relative_to(target_dir)),
-                                "matched_rules": [str(r) for r in result]
+                                "rule": match.rule,
+                                "tags": match.tags,
+                                "meta": match.meta  # includes description, category, severity, etc.
                             })
                     except Exception as e:
                         print(f"[WARN] YARA failed on {file}: {e}")
@@ -49,6 +50,13 @@ class YaraScanner:
     def matches_to_dataframe(self, matches: List[Dict[str, Any]]) -> pd.DataFrame:
         rows = []
         for entry in matches:
-            for rule in entry["matched_rules"]:
-                rows.append({"file": entry["file"], "rule": rule})
+            rows.append({
+                "file": entry["file"],
+                "rule": entry["rule"],
+                "description": entry["meta"].get("description", ""),
+                "severity": entry["meta"].get("severity", ""),
+                "category": entry["meta"].get("category", ""),
+                "confidence": entry["meta"].get("confidence", "")
+            })
         return pd.DataFrame(rows)
+

@@ -3,24 +3,27 @@ from apk_inspector.core.core_controller import APKInspector
 from apk_inspector.reports.report_saver import ReportSaver
 from apk_inspector.core.apk_manager import APKManager
 from apk_inspector.core.yara_scanner import YaraScanner
-from apk_inspector.rules.rule_engine import load_rules_from_yaml, RuleEngine
+from apk_inspector.rules.rule_loader import load_rules_from_yaml 
+from apk_inspector.rules.rule_engine import RuleEngine
 from apk_inspector.rules.rule_utils import validate_rules_yaml
-from apk_inspector.analysis.static.static_runner import StaticAnalyzer
-from apk_inspector.reports.models import APKReportBuilder
+from apk_inspector.analysis.static.static_analyzer import StaticAnalyzer
+from apk_inspector.reports.report_builder import APKReportBuilder
 from apk_inspector.utils.logger import setup_logger
+from typing import Optional
 
 
 def create_apk_inspector(
     apk_path: Path,
     hooks_dir: Path,
     output_dir: Path,
-    verbose: bool = False
+    verbose: bool = False,
+    report_saver: Optional[ReportSaver] = None 
 ) -> APKInspector:
     """
     Factory to configure and return an APKInspector instance.
     """
     logger = setup_logger(verbose)
-    report_saver = ReportSaver(output_root=output_dir, logger=logger)
+    report_saver = report_saver or ReportSaver(output_root=output_dir, logger=logger)
     apk_manager = APKManager(logger=logger)
 
     # Static and YARA tools
@@ -35,7 +38,7 @@ def create_apk_inspector(
 
     # Create report builder
     pkg_name = apk_manager.get_package_name(apk_path)
-    report_builder = APKReportBuilder(package=pkg_name)
+    report_builder = APKReportBuilder(package=pkg_name, apk_path=apk_path)
 
     # Initialize inspector
     return APKInspector(

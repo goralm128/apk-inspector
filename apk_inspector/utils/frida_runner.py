@@ -1,5 +1,7 @@
 import time
 import frida
+from pathlib import Path
+from apk_inspector.utils.hook_loader import load_hook_with_helpers
 
 
 def trace_frida_events(package_name, script_path, timeout=10):
@@ -12,8 +14,9 @@ def trace_frida_events(package_name, script_path, timeout=10):
         pid = device.spawn([package_name])
         session = device.attach(pid)
 
-        with open(script_path, "r", encoding="utf-8") as f:
-            script = session.create_script(f.read())
+        helpers_path = Path("frida/helpers/frida_helpers.js")
+        combined_script = load_hook_with_helpers(Path(script_path), helpers_path)
+        script = session.create_script(combined_script)
 
         def on_message(message, data):
             if message["type"] == "send":

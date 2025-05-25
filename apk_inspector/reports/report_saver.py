@@ -2,11 +2,9 @@ from datetime import datetime
 import json
 from pathlib import Path
 from typing import List, Dict, Optional, Any
-from dataclasses import asdict
-
 import pandas as pd
 from apk_inspector.utils.logger import setup_logger
-from apk_inspector.reports.models import Report, YaraMatch
+from apk_inspector.reports.models import YaraMatch
 
 
 class ReportSaver:
@@ -38,6 +36,9 @@ class ReportSaver:
 
     def _save_json(self, path: Path, data: Any, label: str) -> bool:
         try:
+            # Validate before saving
+            json_str = json.dumps(data, indent=2, ensure_ascii=False)
+            json.loads(json_str)  # throws if not valid
             with path.open("w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
             self.logger.info(f"[\u2713] {label} written to {path.resolve()}")
@@ -46,9 +47,9 @@ class ReportSaver:
             self.logger.error(f"[\u2717] Failed to write {label}: {e}")
             return False
 
-    def save_report(self, report: Report) -> Path:
-        output_path = self.run_dir / f"{report.package}.json"
-        self._save_json(output_path, asdict(report), f"Report for {report.package}")
+    def save_report(self, report: Dict[str, Any]) -> Path:
+        output_path = self.run_dir / f"{report['apk_metadata']['package_name']}.json"
+        self._save_json(output_path, report, f"Report for {report['apk_metadata']['package_name']}")
         return output_path
 
     def save_yara_csv(self, package_name: str, matches: List[YaraMatch]) -> Optional[Path]:

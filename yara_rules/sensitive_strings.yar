@@ -45,3 +45,15 @@ rule Code_Obfuscation_Pattern
   condition:
     any of them
 }
+
+rule suspicious_token_string {
+    meta:
+        description = "Hardcoded token or API key found"
+        severity = "high"
+        category = "sensitive_string"
+        confidence = 90
+    strings:
+        $token = /Bearer\s+[A-Za-z0-9\-._~+\/]+=*/
+    condition:
+        $token
+}

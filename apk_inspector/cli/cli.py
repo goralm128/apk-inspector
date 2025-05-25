@@ -8,8 +8,8 @@ def parse_args():
                         help="Directory containing APK files")
     parser.add_argument("--output-dir", type=Path, default=Path("output"),
                         help="Directory to store output results")
-    parser.add_argument("--hooks-dir", type=Path, default=Path("frida_hooks"),
-                        help="Directory of Frida hook scripts (e.g., frida_hooks/)")
+    parser.add_argument("--hooks-dir", type=Path, default=Path("frida/payloads"),
+                    help="Directory containing Frida hook payloads (not helper scripts)")
     parser.add_argument("--include-private", action="store_true",
                         help="Include private/local IP addresses in network logs")
     parser.add_argument("--timeout", type=int, default=10,
