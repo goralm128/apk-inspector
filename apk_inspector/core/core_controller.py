@@ -16,7 +16,7 @@ from typing import Dict, Any
 
 class APKInspector:
     def __init__(self, apk_path, hooks_dir, static_analyzer, yara_scanner,
-                 rule_engine, report_builder, report_saver, logger, timeout: int = 90):
+                 rule_engine, report_builder, report_saver, logger, timeout: int = 120):
         self.apk_path = apk_path
         self.hooks_dir = hooks_dir
         self.static_analyzer = static_analyzer
@@ -84,13 +84,12 @@ class APKInspector:
         )
 
          # STEP 6: Construct report using builder
-        builder = APKReportBuilder(package=package_name, apk_path=self.apk_path)
-        builder.set_static_analysis([m.to_dict() for m in yara_matches], static_info)
-        builder.merge_hook_result({
+        self.report_builder.set_static_analysis(convert_matches(yara_matches), static_info)
+        self.report_builder.merge_hook_result({
             "events": [e if isinstance(e, dict) else e.__dict__ for e in events],
             "verdict": verdict.label,
             "score": verdict.score,
             "reasons": verdict.reasons
         })
 
-        return builder.build()
+        return self.report_builder.build()

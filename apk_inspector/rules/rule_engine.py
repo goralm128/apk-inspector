@@ -1,5 +1,7 @@
 from dataclasses import dataclass, field
 from typing import Callable, List, Dict, Tuple, Optional, Any
+from apk_inspector.analysis.yara_analyzer import YaraMatchEvaluator
+from apk_inspector.heuristics.static_heuristics import StaticHeuristicEvaluator
 
 
 @dataclass
@@ -98,6 +100,27 @@ class RuleEngine:
     def __init__(self, rules: List[Rule]):
         self.rules = rules
 
+    def _evaluate_dynamic(self, events: List[Dict[str, Any]]) -> Tuple[int, List[str]]:
+        score = 0
+        reasons = []
+
+        for event in events:
+            for rule in self.rules:
+                try:
+                    if rule.condition(event):
+                        score += rule.weight
+                        reasons.append(f"[{rule.severity.upper()}] Rule {rule.id}: {rule.description}")
+                except Exception as e:
+                    reasons.append(f"[WARN] Rule {rule.id} failed: {e}")
+        return score, reasons
+    
+    def _label_from_score(self, score: int) -> str:
+        if score >= self.MALICIOUS_THRESHOLD:
+            return "malicious"
+        elif score >= self.SUSPICIOUS_THRESHOLD:
+            return "suspicious"
+        return "benign"
+
     def evaluate(
         self,
         events: List[Dict[str, Any]],
@@ -107,71 +130,23 @@ class RuleEngine:
         score = 0
         reasons = []
 
-        # Dynamic event-based rule matching
-        for event in events:
-            for rule in self.rules:
-                try:
-                    if rule.condition(event):
-                        score += rule.weight
-                        reasons.append(f"[{rule.severity.upper()}] Rule {rule.id}: {rule.description}")
-                except Exception as e:
-                    reasons.append(f"[WARN] Rule {rule.id} failed: {e}")
+        # 1. Evaluate dynamic rules
+        dynamic_score, dynamic_reasons = self._evaluate_dynamic(events)
+        score += dynamic_score
+        reasons.extend(dynamic_reasons)
 
-        # Static analysis heuristics
+        # 2. Evaluate static heuristics
         if static_info:
-            static_checks = [
-                ("SEND_SMS" in static_info.get("manifest_analysis", {}).get("usesPermissions", []),
-                 15, "[HIGH] Uses SEND_SMS permission"),
-                (static_info.get("reflection_usage", False),
-                 10, "[MEDIUM] Uses reflection"),
-                (static_info.get("obfuscation_detected", False),
-                 15, "[HIGH] Obfuscation detected")
-            ]
-            for condition, pts, msg in static_checks:
-                if condition:
-                    score += pts
-                    reasons.append(msg)
+            static_score, static_reasons = StaticHeuristicEvaluator.evaluate(static_info)
+            score += static_score
+            reasons.extend(static_reasons)
 
-        # YARA-based evaluation
+        # 3. Evaluate YARA metadata
         if yara_hits:
-            for hit in yara_hits:
-                meta = hit.get("meta", {})
-                tags = hit.get("tags", [])
-                tags = [t.lower() for t in tags]
+            yara_score, yara_reasons = YaraMatchEvaluator.evaluate(yara_hits, self.CATEGORY_SCORE, self.TAG_SCORE, self.SEVERITY_SCORE)
+            score += yara_score
+            reasons.extend(yara_reasons)
 
-                rule_id = hit.get("rule", "unknown")
-                desc = meta.get("description", rule_id)
+        return self._label_from_score(score), min(score, 100), reasons
 
-                category = meta.get("category", "uncategorized").lower()
-                severity = meta.get("severity", "medium").lower()
-                tags = [t.lower() for t in hit.get("tags", [])]
-
-                # Scoring
-                score += self.CATEGORY_SCORE.get(category, 0)
-                score += self.SEVERITY_SCORE.get(severity, 10)
-                score += sum(self.TAG_SCORE.get(tag, 0) for tag in tags)
-
-                # Confidence bonus
-                try:
-                    confidence = int(meta.get("confidence", 50))
-                    if confidence >= 90:
-                        score += 5
-                except ValueError:
-                    reasons.append(f"[WARN] Invalid confidence format in rule: {rule_id}")
-
-                # Report unscored tags (informational)
-                unmatched_tags = [tag for tag in tags if tag not in self.TAG_SCORE]
-                if unmatched_tags:
-                    reasons.append(f"[INFO] Unscored YARA tags: {', '.join(unmatched_tags)}")
-
-                reasons.append(f"[YARA][{severity.upper()}][{category}] {rule_id}: {desc}")
-
-        label = self._label_from_score(score)
-        return label, min(score, 100), reasons
-
-    def _label_from_score(self, score: int) -> str:
-        if score >= self.MALICIOUS_THRESHOLD:
-            return "malicious"
-        elif score >= self.SUSPICIOUS_THRESHOLD:
-            return "suspicious"
-        return "benign"
+        
