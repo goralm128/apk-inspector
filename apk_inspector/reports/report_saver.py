@@ -26,9 +26,33 @@ class ReportSaver:
     def logger(self):
         return self._logger
 
-    def get_decompile_path(self, package_name: str) -> Path:
+    def get_decompile_path(self, package_name: str, apk_path: Optional[Path] = None) -> Path:
+        """
+        Returns the correct decompiled directory path for a given APK package.
+
+        Ensures the path is within the current run_dir timestamped folder, not global output/.
+        Falls back to apk_path.stem if package name folder was not created.
+
+        Args:
+            package_name (str): The package name derived from the APK.
+            apk_path (Optional[Path]): Original APK file path as backup fallback.
+
+        Returns:
+            Path: Full path to the decompiled folder inside run_dir.
+        """
+        # Preferred path: run_dir/decompiled/package_name
         path = self.run_dir / "decompiled" / package_name
-        path.mkdir(parents=True, exist_ok=True)
+
+        if path.exists():
+            return path
+
+        # Fallback to stem-based folder if available
+        if apk_path:
+            fallback = self.run_dir / "decompiled" / apk_path.stem
+            if fallback.exists():
+                return fallback
+
+        # Default to primary path (even if it doesn't yet exist)
         return path
 
     def get_hook_result_path(self, package_name: str, hook_name: str) -> Path:
@@ -57,25 +81,40 @@ class ReportSaver:
             self.logger.info(f"[~] No YARA matches to save for {package_name}.")
             return None
 
-        rows = [
-            {"file": match.file, "rule": rule}
-            for match in matches
-            for rule in match.matched_rules
-        ]
+        rows = []
+        for match in matches:
+            for s in match.strings:
+                if not isinstance(s, (list, tuple)) or len(s) != 3:
+                    continue  # skip malformed string match
+                offset, string_id, content = s
+                rows.append({
+                    "file": match.file,
+                    "rule": match.rule,
+                    "string_id": string_id,
+                    "match": content,
+                    "offset": offset,
+                    "tags": ", ".join(match.tags),
+                    "category": match.meta.get("category", ""),
+                    "severity": match.meta.get("severity", ""),
+                    "confidence": match.meta.get("confidence", "")
+                })
+
         df = pd.DataFrame(rows)
         csv_path = self.run_dir / f"{package_name}_yara_matches.csv"
+
         try:
             df.to_csv(csv_path, index=False)
-            self.logger.info(f"[\u2713] Saved YARA match CSV for {package_name} to {csv_path.resolve()}")
+            self.logger.info(f"[✓] Saved YARA match CSV for {package_name} to {csv_path.resolve()}")
             return csv_path
         except Exception as e:
-            self.logger.error(f"[\u2717] Failed to write YARA CSV for {package_name}: {e}")
+            self.logger.error(f"[✗] Failed to write YARA CSV for {package_name}: {e}")
             return None
 
     def save_yara_summary_json(self, results: List[Dict[str, Any]]):
         summary = {
-            r["package"]: [m.get("matched_rules", []) for m in r.get("yara_matches", [])]
-            for r in results if "package" in r
+            r.get("apk_metadata", {}).get("package_name", r.get("package", "unknown")):
+            sorted([m.rule if hasattr(m, "rule") else "unknown" for m in r.get("yara_matches", [])])
+            for r in results if "package" in r or "apk_metadata" in r
         }
         summary_path = self.run_dir / "yara_results.json"
         self._save_json(summary_path, summary, "YARA summary")

@@ -2,8 +2,6 @@ import csv
 from pathlib import Path
 from typing import List, Dict, Any
 
-
-
 class SummaryBuilder:
     def __init__(self, full_report: Dict[str, Any]):
         self.report = full_report
@@ -25,9 +23,13 @@ class SummaryBuilder:
                 "total_events": 0,
                 "high_risk_events": 0,
                 "network_connections": 0,
-                "file_operations": 0
+                "file_operations": 0,
+                "crypto_operations": 0,
+                "reflection_usage": 0,
+                "native_code_usage": 0,
+                "accessibility_service_usage": 0
             }),
-            "yara_matches": [match.get("rule") for match in yara_matches]
+            "yara_matches": [m.get("rule", "unknown") for m in yara_matches]
         }
 
     @staticmethod
@@ -39,32 +41,39 @@ class SummaryBuilder:
         if not summary_list:
             raise ValueError("No summary data to export.")
 
-        # Extract flat keys
         fieldnames = [
             "apk_name",
-            "package_name",
+            "apk_package",
             "sha256",
             "classification",
-            "score",
+            "risk_score",
             "high_risk_events",
             "network_connections",
             "file_operations",
-            "yara_matches",                  # flattened list as string
-            "suspicious_indicators"          # flattened list as string
+            "crypto_operations",
+            "reflection_usage",
+            "native_code_usage",
+            "accessibility_service_usage",
+            "yara_matches",
+            "key_flags"
         ]
 
-        # Flatten nested data
         flat_rows = []
         for s in summary_list:
+            dynamic_summary = s.get("dynamic_summary", {})
             flat_rows.append({
                 "apk_name": s.get("apk_name"),
                 "apk_package": s.get("apk_package"),
                 "sha256": s.get("sha256"),
                 "classification": s.get("classification"),
                 "risk_score": s.get("risk_score"),
-                "high_risk_events": s.get("dynamic_summary", {}).get("high_risk_events", 0),
-                "network_connections": s.get("dynamic_summary", {}).get("network_connections", 0),
-                "file_operations": s.get("dynamic_summary", {}).get("file_operations", 0),
+                "high_risk_events": dynamic_summary.get("high_risk_events", 0),
+                "network_connections": dynamic_summary.get("network_connections", 0),
+                "file_operations": dynamic_summary.get("file_operations", 0),
+                "crypto_operations": dynamic_summary.get("crypto_operations", 0),
+                "reflection_usage": dynamic_summary.get("reflection_usage", 0),
+                "native_code_usage": dynamic_summary.get("native_code_usage", 0),
+                "accessibility_service_usage": dynamic_summary.get("accessibility_service_usage", 0),
                 "yara_matches": ", ".join(s.get("yara_matches", [])),
                 "key_flags": " | ".join(s.get("key_flags", []))
             })

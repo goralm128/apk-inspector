@@ -15,7 +15,7 @@ class APKBatchRunner:
         apk_paths: List[Path],
         hooks_dir: Path,
         report_saver: ReportSaver,
-        timeout: int = 10,
+        timeout: int = 30,
         include_private: bool = False,
         parallel: bool = False
     ):
@@ -29,8 +29,10 @@ class APKBatchRunner:
 
     def run(self):
         if self.parallel:
+            self.logger.info("[*] Running APK analysis in parallel mode...")
             self._run_parallel()
         else:
+            self.logger.info("[*] Running APK analysis in serial mode...")
             self._run_serial()
 
     def _run_serial(self):
@@ -39,7 +41,8 @@ class APKBatchRunner:
                 apk_path,
                 hooks_dir=self.hooks_dir,
                 report_saver=self.report_saver,  # shared instance
-                verbose=True
+                verbose=True,
+                timeout=self.timeout
             )
             for apk_path in self.apk_paths
         ]
@@ -58,7 +61,8 @@ class APKBatchRunner:
             analyze_apk_entrypoint,
             hooks_dir=self.hooks_dir,
             output_dir=self.report_saver.output_root,
-            verbose=True
+            verbose=True,
+            timeout=self.timeout
         )
 
         with get_context("spawn").Pool(processes=min(4, len(self.apk_paths))) as pool:
@@ -104,7 +108,7 @@ class APKBatchRunner:
             return report
 
         except Exception as e:
-            self.logger.error(f"[{apk_path.name}] Analysis failed: {e}")
+            self.logger.error(f"[{apk_path.name}] Analysis failed (APKBatchRunner): {e}")
             return {
                 "package": pkg_name,
                 "verdict": "error",
@@ -127,10 +131,10 @@ class APKBatchRunner:
 
         # Save YARA match summary (flattened)
         yara_summary = {
-            r.get("apk_metadata", {}).get("package_name", r.get("package", "unknown")): 
-            [m.get("rule") for m in r.get("yara_matches", [])]
-            for r in results
-        }
+        r.get("apk_metadata", {}).get("package_name", r.get("package", "unknown")):
+        [m.rule for m in r.get("yara_matches", [])]
+        for r in results
+}
         yara_summary_path = self.report_saver.run_dir / "yara_results.json"
         with yara_summary_path.open("w", encoding="utf-8") as f:
             json.dump(yara_summary, f, indent=2, ensure_ascii=False)

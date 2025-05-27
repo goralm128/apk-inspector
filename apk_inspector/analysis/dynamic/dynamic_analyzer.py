@@ -10,7 +10,7 @@ class DynamicAnalyzer:
 
     def analyze(self, package_name: str) -> list:
         all_events = []
-
+        self.logger.info(f"[{package_name}] Starting dynamic analysis with {len(self.hook_scripts)} hooks")
         for hook_name, script in self.hook_scripts.items():
             self.logger.info(f"[{package_name}] Hook: {hook_name}")
             try:
@@ -31,6 +31,8 @@ class DynamicAnalyzer:
                 self.logger.exception(f"[{package_name}] Hook '{hook_name}' failed: {e}")
             finally:
                 if is_device_connected():
+                    # Ensure the app is stopped after each hook
+                    self.logger.info(f"[{package_name}] Stopping app after hook: {hook_name}")
                     force_stop_app(package_name)
 
         return all_events

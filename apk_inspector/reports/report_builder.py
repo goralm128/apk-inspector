@@ -32,10 +32,10 @@ class APKReportBuilder:
         elif label == "suspicious" and self.verdict.label == "benign":
             self.verdict.label = "suspicious"
 
-    def set_static(self, yara: List[YaraMatch], static: Dict[str, Any]):
+    def set_static_analysis(self, yara: List[Dict[str, Any]], static: Dict[str, Any]):
         self.yara_matches = yara
         self.static_analysis = static
-
+        
     def _get_hashes(self):
         data = self.apk_path.read_bytes()
         return {
@@ -48,7 +48,11 @@ class APKReportBuilder:
             "total_events": len(self.events),
             "high_risk_events": sum(e.metadata.get("risk_level") == "high" for e in self.events),
             "network_connections": sum(e.metadata.get("category") == "network" for e in self.events),
-            "file_operations": sum(e.metadata.get("category") == "filesystem" for e in self.events)
+            "file_operations": sum(e.metadata.get("category") == "filesystem" for e in self.events),
+            "crypto_operations": sum(e.metadata.get("category") == "crypto_usage" for e in self.events),
+            "reflection_usage": sum(e.metadata.get("category") == "reflection" for e in self.events),
+            "native_code_usage": sum(e.metadata.get("category") == "native_injection" for e in self.events),
+            "accessibility_service_usage": sum(e.metadata.get("category") == "accessibility_abuse" for e in self.events)
         }
 
     def build(self) -> Dict[str, Any]:
@@ -59,11 +63,14 @@ class APKReportBuilder:
                 "hash": self._get_hashes()
             },
             "static_analysis": self.static_analysis,
+             "yara_matches": [
+                m.to_dict() if isinstance(m, YaraMatch) else m
+                for m in self.yara_matches
+            ],
             "dynamic_analysis": {
                 "events": [e.__dict__ for e in self.events],
                 "summary": self._summarize_events()
             },
-            "yara_matches": [y.__dict__ for y in self.yara_matches],
             "classification": {
                 "verdict": self.verdict.label,
                 "score": min(self.verdict.score, 100),

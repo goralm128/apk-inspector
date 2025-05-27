@@ -11,43 +11,51 @@ from apk_inspector.reports.report_builder import APKReportBuilder
 from apk_inspector.utils.logger import setup_logger
 from typing import Optional
 
-
 def create_apk_inspector(
     apk_path: Path,
     hooks_dir: Path,
     output_dir: Path,
     verbose: bool = False,
-    report_saver: Optional[ReportSaver] = None 
+    report_saver: Optional[ReportSaver] = None,
+    yara_rules_path: Path = Path("yara_rules"),
+    rule_yaml_path: Path = Path("rule_configs/rules.yaml"),
+    timeout: int = 120
 ) -> APKInspector:
     """
     Factory to configure and return an APKInspector instance.
     """
+
+    # Logger
     logger = setup_logger(verbose)
+
+    # Reuse or create ReportSaver
     report_saver = report_saver or ReportSaver(output_root=output_dir, logger=logger)
+
+    # APK manager to extract package name
     apk_manager = APKManager(logger=logger)
+    package_name = apk_manager.get_package_name(apk_path)
 
-    # Static and YARA tools
+    # Analyzer components
     static_analyzer = StaticAnalyzer(report_saver=report_saver, logger=logger)
-    yara_scanner = YaraScanner(rules_dir=Path("yara_rules"))
+    yara_scanner = YaraScanner(rules_dir=yara_rules_path)
 
-    # Rules engine setup
-    rules_path = Path("rule_configs/rules.yaml")
-    validate_rules_yaml(rules_path)
-    rules = load_rules_from_yaml(rules_path)
+    # Rule engine
+    validate_rules_yaml(rule_yaml_path)
+    rules = load_rules_from_yaml(rule_yaml_path)
     rule_engine = RuleEngine(rules)
 
-    # Create report builder
-    pkg_name = apk_manager.get_package_name(apk_path)
-    report_builder = APKReportBuilder(package=pkg_name, apk_path=apk_path)
+    # Builder
+    report_builder = APKReportBuilder(package=package_name, apk_path=apk_path)
 
-    # Initialize inspector
+    # Compose inspector
     return APKInspector(
+        apk_path=apk_path,
+        hooks_dir=hooks_dir,
         static_analyzer=static_analyzer,
         yara_scanner=yara_scanner,
         rule_engine=rule_engine,
         report_builder=report_builder,
         report_saver=report_saver,
-        apk_path=apk_path,
-        hooks_dir=hooks_dir,
-        logger=logger
+        logger=logger,
+        timeout=timeout
     )

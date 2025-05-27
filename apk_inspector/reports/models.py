@@ -1,5 +1,5 @@
-from dataclasses import dataclass, field
-from typing import List, Dict, Any, Optional
+from dataclasses import dataclass, field, asdict
+from typing import List, Dict, Any
 
 
 @dataclass
@@ -15,7 +15,23 @@ class YaraMatch:
     rule: str
     tags: List[str] = field(default_factory=list)
     meta: Dict[str, Any] = field(default_factory=dict)
+    strings: List = field(default_factory=list)
+    namespace: str = ""
+   
+    def to_dict(self) -> Dict[str, Any]:
+        return asdict(self)
 
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> "YaraMatch":
+        return cls(
+            file=data.get("file", ""),
+            rule=data.get("rule", ""),
+            tags=data.get("tags", []),
+            meta=data.get("meta", {}),
+            strings=data.get("strings", []),
+            namespace=data.get("namespace", "")
+        )
+    
 @dataclass
 class HookResult:
     events: List[Event]

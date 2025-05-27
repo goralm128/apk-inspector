@@ -1,59 +1,55 @@
-rule Hardcoded_Credentials
+rule Suspicious_Token_String : token api auth sensitive
 {
-  strings:
-    $user = "username="
-    $pass = "password="
-    $api  = "api_key="
-  condition:
-    any of them
-}
-
-rule Suspicious_Encryption_Keys
-{
-  strings:
-    $aes = /AESKey=[a-zA-Z0-9+\/]{16,}/
-    $rsa = /-----BEGIN RSA PRIVATE KEY-----/
-  condition:
-    any of them
-}
-
-rule Native_Library_Indicators
-{
-  strings:
-    $libc = "libc.so"
-    $dex  = "classes.dex"
-    $jni  = "JNI_OnLoad"
-  condition:
-    any of them
-}
-
-rule Shellcode_Like_Payload
-{
-  strings:
-    $x86 = { 90 90 90 90 90 } // NOP sled
-    $arm = { 01 10 8F E2 11 FF 2F E1 } // ARM shellcode prologue
-  condition:
-    any of them
-}
-
-rule Code_Obfuscation_Pattern
-{
-  strings:
-    $1 = "com.secure.unknown" nocase
-    $2 = "loadLibrary" nocase
-    $3 = "System.load" nocase
-  condition:
-    any of them
-}
-
-rule suspicious_token_string {
     meta:
-        description = "Hardcoded token or API key found"
-        severity = "high"
-        category = "sensitive_string"
-        confidence = 90
+        description = "Hardcoded token or API key pattern (e.g., Bearer)"
+        category    = "sensitive_string"
+        severity    = "high"
+        confidence  = 90
+        author      = "apk-inspector"
+        created     = "2025-05-25"
+
     strings:
-        $token = /Bearer\s+[A-Za-z0-9\-._~+\/]+=*/
+        $token = /Bearer\s+[A-Za-z0-9._~+\/=-]+/
+
     condition:
         $token
 }
+
+rule Hardcoded_JWT_Like_String : jwt token sensitive_string
+{
+    meta:
+        description = "Possible hardcoded JWT token"
+        category    = "sensitive_string"
+        severity    = "high"
+        confidence  = 85
+        author      = "apk-inspector"
+        created     = "2025-05-25"
+
+    strings:
+        $jwt = /[A-Za-z0-9-_]{10,}\.[A-Za-z0-9-_]{10,}\.[A-Za-z0-9-_]{10,}/
+
+    condition:
+        $jwt
+}
+
+rule Suspicious_Encryption_Keys : sensitive_string crypto key iv
+{
+    meta:
+        description = "Suspicious hardcoded encryption keys or IVs"
+        category    = "sensitive_string"
+        severity    = "high"
+        confidence  = 80
+        author      = "apk-inspector"
+        created     = "2025-05-25"
+
+    strings:
+        $key1 = "key = \"" nocase
+        $key2 = "aes = \"" nocase
+        $key3 = "secret = \"" nocase
+        $iv1  = "iv = \"" nocase
+        $iv2  = "nonce = \"" nocase
+
+    condition:
+        any of ($key*, $iv*)
+}
+
