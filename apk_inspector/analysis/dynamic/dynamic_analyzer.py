@@ -1,6 +1,9 @@
 from apk_inspector.utils.frida_runner import trace_frida_events
 from apk_inspector.core.adb_tools import wake_and_unlock, launch_app, force_stop_app, is_device_connected
 from apk_inspector.utils.file_utils import is_private_ip, deduplicate_events
+from apk_inspector.analysis.data_classifier import classify_path
+from apk_inspector.utils.fs_utils import extract_file_path
+
 
 class DynamicAnalyzer:
     def __init__(self, hook_scripts, logger, timeout=10):
@@ -21,6 +24,10 @@ class DynamicAnalyzer:
                 # Tag the hook source
                 for e in events:
                     e["source_hook"] = hook_name
+                    # Apply classify_path() if event has a relevant file path
+                    file_path = extract_file_path(e)
+                    if file_path:
+                        e["path_type"] = classify_path(file_path)
 
                 if hook_name == "network":
                     events = [e for e in events if not (ip := e.get("address", {}).get("ip")) or not is_private_ip(ip)]

@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Iterable
+from typing import Dict, Optional, Any
 
 def ensure_dirs_exist(dirs: Iterable[Path]) -> None:
     """
@@ -13,3 +14,6 @@ def ensure_dirs_exist(dirs: Iterable[Path]) -> None:
             directory.mkdir(parents=True, exist_ok=True)
         except Exception as e:
             raise RuntimeError(f"Failed to create directory '{directory}': {e}")
+
+def extract_file_path(event: Dict[str, Any]) -> Optional[str]:
+    return event.get("path") or event.get("file") or event.get("filename")

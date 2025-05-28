@@ -2,6 +2,17 @@ import csv
 from pathlib import Path
 from typing import List, Dict, Any
 
+DEFAULT_DYNAMIC_SUMMARY = {
+    "total_events": 0,
+    "high_risk_events": 0,
+    "network_connections": 0,
+    "file_operations": 0,
+    "crypto_operations": 0,
+    "reflection_usage": 0,
+    "native_code_usage": 0,
+    "accessibility_service_usage": 0
+}
+
 class SummaryBuilder:
     def __init__(self, full_report: Dict[str, Any]):
         self.report = full_report
@@ -19,64 +30,43 @@ class SummaryBuilder:
             "classification": classification.get("verdict", "unknown"),
             "risk_score": classification.get("score", 0),
             "key_flags": classification.get("flags", []),
-            "dynamic_summary": dynamic.get("summary", {
-                "total_events": 0,
-                "high_risk_events": 0,
-                "network_connections": 0,
-                "file_operations": 0,
-                "crypto_operations": 0,
-                "reflection_usage": 0,
-                "native_code_usage": 0,
-                "accessibility_service_usage": 0
-            }),
-            "yara_matches": [m.get("rule", "unknown") for m in yara_matches]
+            "dynamic_summary": dynamic.get("summary", DEFAULT_DYNAMIC_SUMMARY.copy()),
+            "yara_matches": [
+                m["rule"] if isinstance(m, dict) else getattr(m, "rule", "unknown")
+                for m in yara_matches
+            ]
         }
 
     @staticmethod
     def build_combined_summaries(reports: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        return [SummaryBuilder(report).build_summary() for report in reports]
+        return [SummaryBuilder(r).build_summary() for r in reports]
 
     @staticmethod
     def export_csv(summary_list: List[Dict[str, Any]], output_path: Path) -> Path:
         if not summary_list:
             raise ValueError("No summary data to export.")
 
-        fieldnames = [
-            "apk_name",
-            "apk_package",
-            "sha256",
-            "classification",
-            "risk_score",
-            "high_risk_events",
-            "network_connections",
-            "file_operations",
-            "crypto_operations",
-            "reflection_usage",
-            "native_code_usage",
-            "accessibility_service_usage",
-            "yara_matches",
-            "key_flags"
-        ]
-
         flat_rows = []
         for s in summary_list:
-            dynamic_summary = s.get("dynamic_summary", {})
+            ds = s.get("dynamic_summary", DEFAULT_DYNAMIC_SUMMARY.copy())
             flat_rows.append({
                 "apk_name": s.get("apk_name"),
                 "apk_package": s.get("apk_package"),
                 "sha256": s.get("sha256"),
                 "classification": s.get("classification"),
                 "risk_score": s.get("risk_score"),
-                "high_risk_events": dynamic_summary.get("high_risk_events", 0),
-                "network_connections": dynamic_summary.get("network_connections", 0),
-                "file_operations": dynamic_summary.get("file_operations", 0),
-                "crypto_operations": dynamic_summary.get("crypto_operations", 0),
-                "reflection_usage": dynamic_summary.get("reflection_usage", 0),
-                "native_code_usage": dynamic_summary.get("native_code_usage", 0),
-                "accessibility_service_usage": dynamic_summary.get("accessibility_service_usage", 0),
+                "high_risk_events": ds.get("high_risk_events", 0),
+                "network_connections": ds.get("network_connections", 0),
+                "file_operations": ds.get("file_operations", 0),
+                "crypto_operations": ds.get("crypto_operations", 0),
+                "reflection_usage": ds.get("reflection_usage", 0),
+                "native_code_usage": ds.get("native_code_usage", 0),
+                "accessibility_service_usage": ds.get("accessibility_service_usage", 0),
                 "yara_matches": ", ".join(s.get("yara_matches", [])),
                 "key_flags": " | ".join(s.get("key_flags", []))
             })
+
+        fieldnames = list(flat_rows[0].keys())
 
         with output_path.open("w", newline='', encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)

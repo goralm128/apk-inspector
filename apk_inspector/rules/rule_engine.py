@@ -27,6 +27,15 @@ class RuleEngine:
     MALICIOUS_THRESHOLD = 80
     SUSPICIOUS_THRESHOLD = 40
 
+    PATH_TYPE_SCORE = {
+        "sensitive": 20,
+        "system_access": 15,
+        "obfuscated_write": 10,
+        "config": 10,
+        "app_storage": 5,
+        "general": 0
+    }
+
     CATEGORY_SCORE = {
         "crypto_usage": 10,
         "dex_loading": 15,
@@ -105,6 +114,7 @@ class RuleEngine:
         reasons = []
 
         for event in events:
+            # Rule matching
             for rule in self.rules:
                 try:
                     if rule.condition(event):
@@ -112,12 +122,21 @@ class RuleEngine:
                         reasons.append(f"[{rule.severity.upper()}] Rule {rule.id}: {rule.description}")
                 except Exception as e:
                     reasons.append(f"[WARN] Rule {rule.id} failed: {e}")
+
+            # Path-based scoring
+            path_type = event.get("path_type")
+            if path_type:
+                pts = self.PATH_TYPE_SCORE.get(path_type, 0)
+                if pts > 0:
+                    score += pts
+                    reasons.append(f"[DYNAMIC] Accessed {path_type} path: {event.get('path') or event.get('file')}")
+
         return score, reasons
     
-    def _label_from_score(self, score: int) -> str:
-        if score >= self.MALICIOUS_THRESHOLD:
+    def _label_from_score(self, total_score: int, dynamic_score: int = 0) -> str:
+        if total_score >= self.MALICIOUS_THRESHOLD:
             return "malicious"
-        elif score >= self.SUSPICIOUS_THRESHOLD:
+        elif total_score >= self.SUSPICIOUS_THRESHOLD or dynamic_score >= 30:
             return "suspicious"
         return "benign"
 
@@ -127,26 +146,31 @@ class RuleEngine:
         static_info: Optional[Dict[str, Any]] = None,
         yara_hits: Optional[List[Dict[str, Any]]] = None
     ) -> Tuple[str, int, List[str]]:
-        score = 0
+        total_score = 0
         reasons = []
 
-        # 1. Evaluate dynamic rules
-        dynamic_score, dynamic_reasons = self._evaluate_dynamic(events)
-        score += dynamic_score
-        reasons.extend(dynamic_reasons)
-
-        # 2. Evaluate static heuristics
+        # --- 1. Static Heuristics ---
+        static_score = 0
+        static_reasons = []
         if static_info:
             static_score, static_reasons = StaticHeuristicEvaluator.evaluate(static_info)
-            score += static_score
-            reasons.extend(static_reasons)
+            reasons.extend([f"[STATIC] {r}" for r in static_reasons])
 
-        # 3. Evaluate YARA metadata
+        # --- 2. Dynamic Heuristics ---
+        dynamic_score, dynamic_reasons = self._evaluate_dynamic(events)
+        reasons.extend([f"[DYNAMIC] {r}" for r in dynamic_reasons])
+
+        # --- 3. YARA Evaluation ---
+        yara_score = 0
+        yara_reasons = []
         if yara_hits:
-            yara_score, yara_reasons = YaraMatchEvaluator.evaluate(yara_hits, self.CATEGORY_SCORE, self.TAG_SCORE, self.SEVERITY_SCORE)
-            score += yara_score
-            reasons.extend(yara_reasons)
+            yara_score, yara_reasons = YaraMatchEvaluator.evaluate(yara_hits)
+            reasons.extend([f"[YARA] {r}" for r in yara_reasons])
 
-        return self._label_from_score(score), min(score, 100), reasons
+        # --- 4. Final Score and Label ---
+        total_score = static_score + dynamic_score + yara_score
+        label = self._label_from_score(total_score, dynamic_score)
+
+        return label, min(total_score, 100), reasons
 
         
