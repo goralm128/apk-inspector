@@ -1,17 +1,27 @@
 import yara
+import pkg_resources
 import pandas as pd
 from pathlib import Path
 from typing import List
 from apk_inspector.reports.models import YaraMatch
-from apk_inspector.utils.yara_cleaner import clean_yara_match, serialize_yara_strings
+from apk_inspector.utils.yara_cleaner import clean_yara_match
 from apk_inspector.utils.yara_evaluator import YaraMatchEvaluator
 from apk_inspector.utils.yara_transform import convert_matches 
+from apk_inspector.utils.yara_utils import serialize_yara_strings
 from apk_inspector.utils.logger import get_logger
 
 class YaraScanner:
     def __init__(self, rules_dir: Path = Path("yara_rules")):
         self.rules_dir = rules_dir
         self.logger = get_logger()
+        
+        # Log YARA version on scanner startup
+        try:
+            yara_version = pkg_resources.get_distribution("yara-python").version
+            self.logger.info(f"[YARA] Using yara-python version {yara_version}")
+        except Exception as e:
+            self.logger.warning(f"[YARA] Could not determine yara-python version: {e}")
+        
         self.rules = self._compile_yara_rules()
         
     def _compile_yara_rules(self) -> List[yara.Rules]:
@@ -84,12 +94,21 @@ class YaraScanner:
                     result = rule.match(filepath=str(file))
                     for match in result:
                         tags, meta = clean_yara_match(match)
+                        
+                        try:
+                            serialized_strings = serialize_yara_strings(match.strings)
+                        except Exception as string_err:
+                            self.logger.warning(
+                                f"[YARA] Failed to serialize match.strings in {file} ({match.rule}): {string_err}"
+                            )
+                            serialized_strings = []
+                        
                         matches.append(YaraMatch(
                             file=str(file.relative_to(target_dir)),
                             rule=match.rule,
                             tags=tags,
                             meta=meta,
-                            strings=serialize_yara_strings(match.strings),
+                            strings=serialized_strings,
                             namespace=match.namespace,
                         ))
                 except Exception as e:

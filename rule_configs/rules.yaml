@@ -3,7 +3,7 @@
   category: data_leak
   weight: 5
   severity: medium
-  condition: "event.get('classification') == 'sensitive'"
+  condition: "'token' in event.get('path', '') or event.get('classification') == 'sensitive'"
   tags: ["privacy", "filesystem"]
   cvss: 5.5
 
@@ -19,18 +19,18 @@
 - id: R3
   description: "High-volume data transfer via write"
   category: exfiltration
-  weight: 3
-  severity: low
-  condition: "event.get('event') == 'write' and event.get('length', 0) > 1024"
+  weight: 4
+  severity: medium
+  condition: "event.get('event') == 'write' and event.get('length', 0) > 8192 and event.get('path_type') != 'app_storage'"
   tags: ["exfiltration", "data"]
-  cvss: 4.8
+  cvss: 5.8
 
 - id: R4
   description: "Suspicious file access in system directory"
   category: privilege_escalation
   weight: 6
   severity: high
-  condition: "event.get('classification') == 'system'"
+  condition: "event.get('path_type') == 'system_access'"
   tags: ["filesystem", "system"]
   cvss: 6.1
 
@@ -39,6 +39,42 @@
   category: c2
   weight: 7
   severity: high
-  condition: "'example.com' in event.get('data', '')"
+  condition: "any(domain in event.get('data', '') for domain in ['example.com', 'evil.org', 'malicious.net'])"
   tags: ["c2", "dns"]
   cvss: 6.5
+
+- id: R6
+  description: "Abuse of accessibility services"
+  category: accessibility_abuse
+  weight: 7
+  severity: high
+  condition: "event.get('metadata', {}).get('category') == 'accessibility_abuse'"
+  tags: ["accessibility", "overlay", "clickjacking"]
+  cvss: 7.1
+
+- id: R7
+  description: "Usage of reflection (dynamic method invocation)"
+  category: reflection
+  weight: 6
+  severity: high
+  condition: "event.get('metadata', {}).get('category') == 'reflection'"
+  tags: ["reflection", "evasion"]
+  cvss: 6.9
+
+- id: R8
+  description: "Dynamic loading of DEX or shared libraries"
+  category: dex_loading
+  weight: 6
+  severity: high
+  condition: "event.get('hook') in {'dlopen', 'Class.forName'}"
+  tags: ["code_injection", "jni", "native"]
+  cvss: 7.0
+
+- id: R9
+  description: "Possible Frida or instrumentation detection"
+  category: evasion
+  weight: 8
+  severity: high
+  condition: "event.get('hook') in {'dlopen', 'popen', 'system'} and 'frida' in event.get('args', {}).get('arg0', '')"
+  tags: ["frida", "evasion", "hooking"]
+  cvss: 7.5

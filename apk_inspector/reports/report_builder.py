@@ -3,6 +3,7 @@ from pathlib import Path
 from typing import List, Dict, Any
 from apk_inspector.reports.models import Event, YaraMatch, Verdict
 import hashlib
+from apk_inspector.reports.summary.dynamic_summary import summarize_dynamic_events
 
 class APKReportBuilder:
     def __init__(self, package: str, apk_path: Path):
@@ -23,14 +24,14 @@ class APKReportBuilder:
             }
             self.events.append(Event(**normalized))
 
-        self.verdict.reasons.extend(hook_result.get("reasons", []))
-        self.verdict.score += hook_result.get("score", 0)
-
-        label = hook_result.get("verdict")
-        if label == "malicious":
-            self.verdict.label = "malicious"
-        elif label == "suspicious" and self.verdict.label == "benign":
-            self.verdict.label = "suspicious"
+        verdict = hook_result.get("verdict")
+        if isinstance(verdict, Verdict):
+            self.verdict = verdict
+        else:
+            # fallback to legacy dict form
+            self.verdict.reasons.extend(hook_result.get("reasons", []))
+            self.verdict.score += hook_result.get("score", 0)
+            self.verdict.label = hook_result.get("verdict", self.verdict.label)
 
     def set_static_analysis(self, yara_matches: List[Dict], static_result: Dict[str, Any]):
         if hasattr(static_result, "to_dict"):
@@ -46,26 +47,17 @@ class APKReportBuilder:
         }
 
     def _summarize_events(self):
-        return {
-            "total_events": len(self.events),
-            "high_risk_events": sum(e.metadata.get("risk_level") == "high" for e in self.events),
-            "network_connections": sum(e.metadata.get("category") == "network" for e in self.events),
-            "file_operations": sum(e.metadata.get("category") == "filesystem" for e in self.events),
-            "crypto_operations": sum(e.metadata.get("category") == "crypto_usage" for e in self.events),
-            "reflection_usage": sum(e.metadata.get("category") == "reflection" for e in self.events),
-            "native_code_usage": sum(e.metadata.get("category") == "native_injection" for e in self.events),
-            "accessibility_service_usage": sum(e.metadata.get("category") == "accessibility_abuse" for e in self.events)
-        }
+        return summarize_dynamic_events([e.__dict__ for e in self.events])
 
     def build(self) -> Dict[str, Any]:
-        return {
+        report = {
             "apk_metadata": {
                 "package_name": self.package,
                 "analyzed_at": datetime.utcnow().isoformat() + "Z",
                 "hash": self._get_hashes()
             },
             "static_analysis": self.static_analysis,
-             "yara_matches": [
+            "yara_matches": [
                 m.to_dict() if isinstance(m, YaraMatch) else m
                 for m in self.yara_matches
             ],
@@ -79,3 +71,5 @@ class APKReportBuilder:
                 "flags": self.verdict.reasons
             }
         }
+        
+        return report

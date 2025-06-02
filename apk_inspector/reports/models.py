@@ -47,7 +47,9 @@ class Verdict:
     """Represents the suspicion score and decision."""
     score: int
     label: str  # benign | suspicious | malicious
-    reasons: List[str] = field(default_factory=list)
+    reasons: List[str]
+    high_risk_event_count: int = 0
+    network_activity_detected: bool = False
     
 
 @dataclass
@@ -57,12 +59,15 @@ class ApkSummary:
     sha256: str
     classification: str
     risk_score: int
-    key_flags: List[str] = field(default_factory=list)
-    dynamic_summary: Dict[str, Any] = field(default_factory=dict)
+    key_flags: List[str]
+    dynamic_summary: Dict[str, int]
+    yara_matches: List[str]
     top_tags: List[str] = field(default_factory=list)
     top_sources: List[str] = field(default_factory=list)
-    yara_matches: List[str] = field(default_factory=list)
-    error: str = ""  # optional
+    yara_match_count: int = 0
+    top_triggered_rules: List[str] = field(default_factory=list)
+    cvss_risk_band: str = "Unknown"
+    error: str = ""
 
     @staticmethod
     def from_dict(data: Dict[str, Any]) -> "ApkSummary":

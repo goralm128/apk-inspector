@@ -29,6 +29,7 @@ HOOK_CATEGORY_MAP = {
     "System.loadLibrary": "native_injection",
     "System.load": "native_injection",
     "dlopen": "native_injection",
+    "native_sensitive_fn": "native_injection",
 
     # Accessibility abuse
     "AccessibilityService": "accessibility_abuse",

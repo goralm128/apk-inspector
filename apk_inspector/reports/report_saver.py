@@ -63,9 +63,13 @@ class ReportSaver:
         rows = []
         for match in matches:
             for s in match.strings:
-                if not isinstance(s, (list, tuple)) or len(s) != 3:
-                    continue  # skip malformed string match
-                offset, string_id, content = s
+                try:
+                    offset =s["offset"]
+                    string_id = s["identifier"]
+                    content = s["data"]
+                except (TypeError, KeyError):
+                    self.logger.warning(f"[YARA] Missing key in string match: {e}")
+                    continue # skip this string if it fails
                 rows.append({
                     "file": match.file,
                     "rule": match.rule,

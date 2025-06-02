@@ -5,6 +5,22 @@ from apk_inspector.utils.logger import get_logger
 
 logger = get_logger()
 
+SAFE_BUILTINS = {
+    "any": any,
+    "all": all,
+    "len": len,
+    "sum": sum,
+    "min": min,
+    "max": max,
+    "sorted": sorted,
+    "set": set,
+    "str": str,
+    "int": int,
+    "float": float,
+    "bool": bool
+}
+
+
 # Define the JSON schema for the rules.yaml file
 # This schema is strict and requires all fields to be present and correctly typed.
 RULES_SCHEMA = {
@@ -57,7 +73,7 @@ def validate_rules_yaml(yaml_path: Path) -> None:
 
 def safe_lambda(condition: str):
     def func(event):
-        return eval(condition, {"__builtins__": {}}, {"event": event})
+        return eval(condition, {"__builtins__": None, **SAFE_BUILTINS}, {"event": event})
     return func
 
 def validate_rule_schema(rule_dict: dict) -> bool:

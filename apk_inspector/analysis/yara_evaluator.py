@@ -4,6 +4,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 class YaraMatchEvaluator:
+    
     @staticmethod
     def evaluate(
         yara_hits: List[Dict[str, Any]],

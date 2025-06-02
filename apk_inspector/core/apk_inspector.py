@@ -57,7 +57,7 @@ class APKInspector:
         try:
             self._ensure_decompiled(package_name)
             static_info = self._perform_static_analysis(package_name)
-            yara_matches = [] #TODO self._run_yara_scan(package_name)
+            yara_matches = self._run_yara_scan(package_name)
 
             dynamic_analyzer = DynamicAnalyzer(
                 hooks_dir=self.hooks_dir,
@@ -68,20 +68,20 @@ class APKInspector:
 
             self.logger.info(f"[{package_name}] Dynamic analysis collected {len(events)} events.")
 
-            verdict_label, score_value, reasons = self.rule_engine.evaluate(
+            # Evaluate using RuleEngine and get full Verdict object
+            verdict = self.rule_engine.evaluate(
                 events=events,
                 yara_hits=convert_matches(yara_matches),
                 static_info=static_info
             )
 
-            self._log_verdict(package_name, verdict_label, score_value, reasons, events, yara_matches, static_info)
+            # Pass full verdict to logging and report builder
+            self._log_verdict(package_name, verdict, events, yara_matches, static_info)
 
             self.report_builder.set_static_analysis(convert_matches(yara_matches), static_info)
             self.report_builder.merge_hook_result({
                 "events": events,
-                "verdict": verdict_label,
-                "score": score_value,
-                "reasons": reasons
+                "verdict": verdict  # 👈 no longer a tuple!
             })
 
             final_report = self.report_builder.build()
@@ -112,18 +112,18 @@ class APKInspector:
         self.logger.info(f"[{package_name}] Running YARA scan...")
         return self.yara_scanner.scan_directory(decompiled_dir)
 
-    def _log_verdict(self, package_name, label, score, reasons, events, yara_hits, static_info):
+    def _log_verdict(self, package_name, verdict: Verdict, events, yara_hits, static_info):
         log_verdict_debug(
             logger=self.logger,
             package_name=package_name,
-            score=score,
-            verdict_label=label,
-            reasons=reasons,
+            score=verdict.score,
+            verdict_label=verdict.label,
+            reasons=verdict.reasons,
             events=events,
             yara_hits=yara_hits,
             static_info=static_info
         )
-
+        
     def _error_result(self, package: str, base: Dict[str, Any], error_msg: str) -> Dict[str, Any]:
         return {
             **base,

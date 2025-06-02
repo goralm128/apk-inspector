@@ -1,5 +1,6 @@
 from typing import List, Dict, Any
 from pathlib import Path
+from collections import Counter
 from apk_inspector.reports.models import ApkSummary
 from apk_inspector.analysis.justification_analyzer import JustificationAnalyzer
 from apk_inspector.config.defaults import DEFAULT_DYNAMIC_SUMMARY
@@ -25,6 +26,36 @@ class ApkSummaryBuilder:
             ]
 
             analyzer = JustificationAnalyzer(justifications)
+            
+            # --- YARA match count ---
+            yara_match_count = len(yara_matches)
+
+            # --- Top triggered rule IDs ---
+            triggered_rules = [
+                rid
+                for e in dynamic.get("events", [])
+                for rid in e.get("metadata", {}).get("triggered_rules", [])
+            ]
+            top_triggered = [rule for rule, _ in Counter(triggered_rules).most_common(5)]
+
+            # --- CVSS band from triggered rules (optional enhancement) ---
+            # If your event metadata includes CVSS scores, extract them
+            cvss_scores = [
+                rule.get("cvss", 0.0)
+                for e in dynamic.get("events", [])
+                for rule in e.get("metadata", {}).get("triggered_rule_details", [])
+                if isinstance(rule, dict)
+            ]
+            max_cvss = max(cvss_scores, default=0.0)
+
+            def map_cvss_band(cvss):
+                if cvss >= 9.0: return "Critical"
+                elif cvss >= 7.0: return "High"
+                elif cvss >= 4.0: return "Medium"
+                elif cvss > 0.0: return "Low"
+                return "Unknown"
+
+            cvss_band = map_cvss_band(max_cvss)
 
             return ApkSummary(
                 apk_name=meta.get("apk_name", meta.get("package_name", "unknown.apk")),
@@ -40,8 +71,12 @@ class ApkSummaryBuilder:
                     m["rule"] if isinstance(m, dict) else getattr(m, "rule", "unknown")
                     for m in yara_matches
                 ],
+                yara_match_count=yara_match_count,
+                top_triggered_rules=top_triggered,
+                cvss_risk_band=cvss_band,
                 error=""
             )
+            
         except Exception as e:
             self.logger.exception(f"[✗] Failed to build summary for {meta.get('package_name', 'unknown')}")
             return ApkSummary(

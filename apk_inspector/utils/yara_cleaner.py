@@ -38,19 +38,3 @@ def clean_yara_match(match: Any, enable_logging: bool = True) -> Tuple[List[str]
 
     return tags, meta
 
-
-def serialize_yara_strings(strings) -> List[Tuple[int, str, str]]:
-    """
-    Normalize YARA string match data to make it serializable.
-    """
-    serialized = []
-    for offset, identifier, data in strings:
-        if isinstance(data, bytes):
-            try:
-                data_str = data.decode("utf-8", errors="replace")
-            except Exception:
-                data_str = data.hex()
-        else:
-            data_str = str(data)
-        serialized.append((offset, identifier, data_str))
-    return serialized

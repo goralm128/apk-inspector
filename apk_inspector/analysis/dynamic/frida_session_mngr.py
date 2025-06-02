@@ -82,12 +82,18 @@ class FridaSessionManager:
             self.logger.exception(f"[FRIDA ERROR] Tracing failed for {self.package_name}: {e}")
 
         finally:
-            try:
-                if session:
+            if session:
+                try:
                     session.detach()
-                if pid and not self.leave_app_running:
-                    device.kill(pid)
-            except Exception as cleanup_err:
-                self.logger.warning(f"[FRIDA WARNING] Cleanup failed: {cleanup_err}")
+                except Exception as e:
+                    self.logger.warning(f"[FRIDA WARNING] Detach failed: {e}")
+
+            if pid and not self.leave_app_running:
+                try:
+                    # Only kill if still alive
+                    if pid in [p.pid for p in device.enumerate_processes()]:
+                        device.kill(pid)
+                except Exception as cleanup_err:
+                    self.logger.warning(f"[FRIDA WARNING] Cleanup failed: {cleanup_err}")
 
         return events
