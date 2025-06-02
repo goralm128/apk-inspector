@@ -2,13 +2,13 @@ from typing import Dict, Any, List, Tuple
 
 class StaticHeuristicEvaluator:
     SUSPICIOUS_STRING_SCORE = {
-        "aws_access_key": (20, "[HIGH] AWS access key"),
-        "bearer_token": (15, "[HIGH] Bearer token found"),
-        "base64_string": (3, "[INFO] Base64-like string (possible encoding)"),
+        "aws_access_key": (15, "[HIGH] AWS access key"),
+        "bearer_token": (12, "[HIGH] Bearer token found"),
+        "base64_string": (1, "[INFO] Base64-like string (possible encoding)"),
         "hex_string": (10, "[MEDIUM] Hex string detected"),
         "ip_address": (10, "[MEDIUM] Hardcoded IP address"),
-        "url_http": (2, "[INFO] Insecure HTTP URL found"),
-        "url_https": (5, "[LOW] HTTPS URL found")
+        "url_http": (1, "[INFO] Insecure HTTP URL found"),
+        "url_https": (0, "[LOW] HTTPS URL found")
     }
 
     @staticmethod
@@ -33,8 +33,12 @@ class StaticHeuristicEvaluator:
 
         # --- Dangerous Permissions ---
         for perm in static_info.get("manifest_analysis", {}).get("dangerous_permissions", []):
-            reasons.append(f"[MEDIUM] Uses dangerous permission: {perm}")
-            score += 10
+            if perm in {"READ_SMS", "RECEIVE_SMS", "CALL_PHONE"}:
+                score += 10  # High-risk
+                reasons.append(f"[HIGH] High-risk permission: {perm}")
+            else:
+                score += 5   # Less severe
+                reasons.append(f"[LOW] Uses dangerous permission: {perm}")
 
         # --- Suspicious Strings ---
         for string in static_info.get("string_matches", []):

@@ -3,8 +3,8 @@ import json
 from pathlib import Path
 from typing import List, Dict, Optional, Any
 import pandas as pd
-from apk_inspector.utils.logger import setup_logger
 from apk_inspector.reports.models import YaraMatch
+from apk_inspector.utils.logger import get_logger
 
 
 class ReportSaver:
@@ -13,47 +13,13 @@ class ReportSaver:
     Automatically creates timestamped output folders and logging.
     """
 
-    def __init__(self, output_root: Path = Path("output"), logger: Optional[Any] = None):
-        self.timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        self.output_root = output_root
-        self.run_dir = output_root / self.timestamp
+    def __init__(self, run_dir: Path):
+        self.run_dir = run_dir
+        self.output_root = run_dir.parent
+        self.timestamp = run_dir.name
+        self.logger = get_logger()
+
         self.run_dir.mkdir(parents=True, exist_ok=True)
-
-        self.log_path = self.run_dir / "full.log"
-        self._logger = logger or setup_logger(verbose=True, log_path=self.log_path)
-
-    @property
-    def logger(self):
-        return self._logger
-
-    def get_decompile_path(self, package_name: str, apk_path: Optional[Path] = None) -> Path:
-        """
-        Returns the correct decompiled directory path for a given APK package.
-
-        Ensures the path is within the current run_dir timestamped folder, not global output/.
-        Falls back to apk_path.stem if package name folder was not created.
-
-        Args:
-            package_name (str): The package name derived from the APK.
-            apk_path (Optional[Path]): Original APK file path as backup fallback.
-
-        Returns:
-            Path: Full path to the decompiled folder inside run_dir.
-        """
-        # Preferred path: run_dir/decompiled/package_name
-        path = self.run_dir / "decompiled" / package_name
-
-        if path.exists():
-            return path
-
-        # Fallback to stem-based folder if available
-        if apk_path:
-            fallback = self.run_dir / "decompiled" / apk_path.stem
-            if fallback.exists():
-                return fallback
-
-        # Default to primary path (even if it doesn't yet exist)
-        return path
 
     def get_hook_result_path(self, package_name: str, hook_name: str) -> Path:
         return self.run_dir / f"{package_name}_{hook_name}.json"
@@ -61,14 +27,27 @@ class ReportSaver:
     def _save_json(self, path: Path, data: Any, label: str) -> bool:
         try:
             # Validate before saving
-            json_str = json.dumps(data, indent=2, ensure_ascii=False)
-            json.loads(json_str)  # throws if not valid
+            json_str = json.dumps(data, indent=2, ensure_ascii=False)  # triggers serialization issues
+            json.loads(json_str)
+            
             with path.open("w", encoding="utf-8") as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
-            self.logger.info(f"[\u2713] {label} written to {path.resolve()}")
+                
+            self.logger.info(f"{label} written to {path.resolve()}")
             return True
+        
         except Exception as e:
-            self.logger.error(f"[\u2717] Failed to write {label}: {e}")
+            self.logger.error(f"Failed to write {label}: {e}")
+            try:
+                if isinstance(data, list):
+                    for idx, item in enumerate(data):
+                        if not isinstance(item, dict):
+                            self.logger.debug(f"[Debug] Unserializable item at index {idx}: {type(item)}")
+                elif not isinstance(data, dict):
+                    self.logger.debug(f"[Debug] Top-level data type: {type(data)}")
+            except Exception as dbg:
+                self.logger.debug(f"[Debug] Type inspection failed: {dbg}")
+                    
             return False
 
     def save_report(self, report: Dict[str, Any]) -> Path:

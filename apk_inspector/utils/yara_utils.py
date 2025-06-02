@@ -1,8 +1,7 @@
 from typing import Tuple, List, Dict, Any
-import logging
 from apk_inspector.reports.models import YaraMatch
+from apk_inspector.utils.logger import get_logger
 
-logger = logging.getLogger("YaraUtils")
 
 def clean_yara_match(match: Any, enable_logging: bool = True) -> Tuple[List[str], Dict[str, Any]]:
     """

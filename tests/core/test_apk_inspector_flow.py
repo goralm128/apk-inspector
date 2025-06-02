@@ -1,4 +1,4 @@
-from apk_inspector.core.core_controller import APKInspector
+from apk_inspector.core.apk_inspector import APKInspector
 from apk_inspector.core.apk_manager import APKManager
 from apk_inspector.reports.report_saver import ReportSaver
 import logging

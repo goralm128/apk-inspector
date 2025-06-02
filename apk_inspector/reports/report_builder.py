@@ -32,9 +32,11 @@ class APKReportBuilder:
         elif label == "suspicious" and self.verdict.label == "benign":
             self.verdict.label = "suspicious"
 
-    def set_static_analysis(self, yara: List[Dict[str, Any]], static: Dict[str, Any]):
-        self.yara_matches = yara
-        self.static_analysis = static
+    def set_static_analysis(self, yara_matches: List[Dict], static_result: Dict[str, Any]):
+        if hasattr(static_result, "to_dict"):
+            static_result = static_result.to_dict()
+        self._static_analysis = static_result
+        self._yara_matches = yara_matches
         
     def _get_hashes(self):
         data = self.apk_path.read_bytes()

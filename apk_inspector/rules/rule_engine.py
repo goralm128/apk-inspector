@@ -154,10 +154,12 @@ class RuleEngine:
         static_reasons = []
         if static_info:
             static_score, static_reasons = StaticHeuristicEvaluator.evaluate(static_info)
+            static_score = min(static_score, 20)  # cap static contribution
             reasons.extend([f"[STATIC] {r}" for r in static_reasons])
 
         # --- 2. Dynamic Heuristics ---
         dynamic_score, dynamic_reasons = self._evaluate_dynamic(events)
+        dynamic_score = min(dynamic_score, 70)  # cap dynamic contribution
         reasons.extend([f"[DYNAMIC] {r}" for r in dynamic_reasons])
 
         # --- 3. YARA Evaluation ---
@@ -165,6 +167,7 @@ class RuleEngine:
         yara_reasons = []
         if yara_hits:
             yara_score, yara_reasons = YaraMatchEvaluator.evaluate(yara_hits)
+            yara_score = min(yara_score, 10)  # cap YARA contribution
             reasons.extend([f"[YARA] {r}" for r in yara_reasons])
 
         # --- 4. Final Score and Label ---

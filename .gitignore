@@ -1,33 +1,48 @@
+# -----------------------------------------------------------------------------
+# APK Inspector Git Ignore
+# -----------------------------------------------------------------------------
+
 # APK artifacts
 apks/**/*.apk
 !apks/.gitkeep
 
-# Output data
+# Output / reports / analysis results
 output/*
 !output/.gitkeep
 
-# Python bytecode and cache
-**/__pycache__/
-**/*.py[cod]
-**/*.pyo
+# Python bytecode & cache
+__pycache__/
+*.py[cod]
+*.pyo
+
+# Testing artifacts
+.coverage
+.pytest_cache/
+htmlcov/
+.cache/
 
 # Virtual environments
 venv/
 .env/
 .venv/
 
-# Logs and temp files
-**/*.log
-**/*.tmp
+# Frida-related logs and temporary files
+*.log
+*.tmp
 
-# Test artifacts and coverage reports
-.coverage
-.pytest_cache/
-htmlcov/
-.cache/
+# Build metadata
+*.egg-info/
+*.egg
+build/
+dist/
 
-# Editor settings
+# IDE and tooling
 .vscode/
+.idea/
 
-# APK files
-apks/*
+# Notebook checkpoints (optional)
+*.ipynb_checkpoints/
+
+# System files
+.DS_Store
+Thumbs.db

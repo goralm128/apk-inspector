@@ -1,49 +1,75 @@
 'use strict';
 
-function getTimestamp() {
-    return new Date().toISOString();
-}
+/**
+ * Exports createHookLogger and helper utilities to globalThis
+ */
 
-function classifyData(data) {
-    if (!data || data === '[binary or unreadable]') return 'binary';
+globalThis.createHookLogger = function ({ hook, category, tags = [], description = "", sensitive = false }) {
+    const metadata = { name: hook, category, tags, description, sensitive };
+    return function logEvent(eventPayload) {
+        const event = {
+            ...eventPayload,
+            hook,
+            metadata,
+            timestamp: new Date().toISOString(),
+            threadId: Process.getCurrentThreadId()
+        };
+        send(event);
+    };
+};
 
-    const trimmed = data.trim();
-    if (/^(GET|POST|PUT|DELETE|CONNECT|OPTIONS|HEAD)\s/i.test(trimmed)) return 'http';
-    if ((trimmed.startsWith('{') || trimmed.startsWith('[')) && (trimmed.endsWith('}') || trimmed.endsWith(']'))) {
-        try { JSON.parse(trimmed); return 'json'; } catch {}
+/**
+ * Utility: Safe Frida send wrapper
+ */
+globalThis.send_event = function (data, context = {}) {
+    try {
+        const payload = {
+            ...context,
+            ...data,
+            timestamp: new Date().toISOString(),
+        };
+        send(payload);
+    } catch (e) {
+        send({
+            type: "internal_error",
+            message: "send_event failed",
+            error: e.toString()
+        });
     }
-    if (/^[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+$/.test(trimmed)) return 'jwt';
-    if (/[\w\-]{20,}/.test(trimmed) && /key|token|auth/i.test(trimmed)) return 'api_key';
-    if (/^[\x20-\x7E\r\n\t]+$/.test(trimmed)) return 'text';
-    return 'binary';
-}
+};
 
-function classifyRisk(classification) {
-    switch (classification) {
-        case 'jwt':
-        case 'api_key': return 'high';
-        case 'http':
-        case 'json':
-        case 'text': return 'moderate';
-        default: return 'low';
+/**
+ * Convert a byte array to hex string
+ */
+globalThis.toHex = function (array) {
+    return Array.prototype.map.call(array, x => ('00' + x.toString(16)).slice(-2)).join('');
+};
+
+/**
+ * Safely get a Java stack trace (Android only)
+ */
+globalThis.get_java_stack = function () {
+    try {
+        return Java.use("java.lang.Exception").$new().getStackTrace()
+            .map(frame => frame.toString())
+            .join('\n');
+    } catch (_) {
+        return "N/A (no Java context)";
     }
-}
+};
 
-function normalizeEvent(event) {
-    event.timestamp = getTimestamp();
-    event.classification = classifyData(event.data);
-    event.risk_level = classifyRisk(event.classification);
-    event.category = event.category || 'unknown';
-    event.source = event.source || 'frida';
-    event.tags = event.tags || [];
+/**
+ * Try to get current thread's name (Android only)
+ */
+globalThis.get_thread_name = function () {
+    try {
+        return Java.use("java.lang.Thread").currentThread().getName();
+    } catch (_) {
+        return "unknown-thread";
+    }
+};
 
-    if (event.classification === 'jwt') event.tags.push('token', 'auth');
-    if (event.classification === 'api_key') event.tags.push('sensitive');
-    if (event.classification === 'http') event.tags.push('web', 'plaintext');
-
-    return event;
-}
-
-function log(event) {
-    send(normalizeEvent(event));
-}
+globalThis.isSensitiveNativeFunction = function (name) {
+    const risky = ["system", "exec", "dlopen", "fork", "popen", "CreateProcess"];
+    return risky.includes(name.toLowerCase());
+};

@@ -1,0 +1,136 @@
+from pathlib import Path
+from typing import Dict, Any, List
+from apk_inspector.utils.hook_descovery import discover_hooks
+from apk_inspector.analysis.dynamic.dynamic_analyzer import DynamicAnalyzer
+from apk_inspector.analysis.static.static_analyzer import StaticAnalyzer
+from apk_inspector.analysis.yara_scanner import YaraScanner
+from apk_inspector.rules.rule_engine import RuleEngine
+from apk_inspector.reports.report_builder import APKReportBuilder
+from apk_inspector.core.workspace_manager import WorkspaceManager
+from apk_inspector.utils.logger import get_logger
+from apk_inspector.core.decompiler import decompile_apk
+from apk_inspector.reports.models import Verdict
+from apk_inspector.utils.yara_utils import convert_matches
+from apk_inspector.utils.logger import log_verdict_debug
+
+
+class APKInspector:
+    def __init__(
+        self,
+        apk_path: Path,
+        hooks_dir: Path,
+        static_analyzer: StaticAnalyzer,
+        yara_scanner: YaraScanner,
+        rule_engine: RuleEngine,
+        report_builder: APKReportBuilder,
+        workspace: WorkspaceManager,
+        logger=None,
+        timeout: int = 120
+    ):
+        self.apk_path = apk_path
+        self.hooks_dir = hooks_dir
+        self.static_analyzer = static_analyzer
+        self.yara_scanner = yara_scanner
+        self.rule_engine = rule_engine
+        self.report_builder = report_builder
+        self.workspace = workspace
+        self.logger = logger or get_logger()
+        self.timeout = timeout
+
+        if not self.hooks_dir.exists():
+            raise FileNotFoundError(f"Hook directory not found: {self.hooks_dir}")
+
+        hook_scripts = discover_hooks(self.hooks_dir, logger)
+        if not hook_scripts:
+            logger.error(f"[✗] No valid Frida hook scripts found in: {hooks_dir.resolve()}")
+            raise RuntimeError(f"No Frida hook scripts found in: {self.hooks_dir}")
+
+    def run(self) -> Dict[str, Any]:
+        package_name = self.report_builder.package
+        base_report = {
+            "apk_metadata": {
+                "package_name": package_name,
+                "source_apk": str(self.apk_path)
+            }
+        }
+
+        try:
+            self._ensure_decompiled(package_name)
+            static_info = self._perform_static_analysis(package_name)
+            yara_matches = [] #TODO self._run_yara_scan(package_name)
+
+            dynamic_analyzer = DynamicAnalyzer(
+                hooks_dir=self.hooks_dir,
+                logger=self.logger,
+                timeout=self.timeout
+            )
+            events = dynamic_analyzer.analyze(package_name)
+
+            self.logger.info(f"[{package_name}] Dynamic analysis collected {len(events)} events.")
+
+            verdict_label, score_value, reasons = self.rule_engine.evaluate(
+                events=events,
+                yara_hits=convert_matches(yara_matches),
+                static_info=static_info
+            )
+
+            self._log_verdict(package_name, verdict_label, score_value, reasons, events, yara_matches, static_info)
+
+            self.report_builder.set_static_analysis(convert_matches(yara_matches), static_info)
+            self.report_builder.merge_hook_result({
+                "events": events,
+                "verdict": verdict_label,
+                "score": score_value,
+                "reasons": reasons
+            })
+
+            final_report = self.report_builder.build()
+            return {**base_report, **final_report}
+
+        except Exception as e:
+            self.logger.exception(f"[{package_name}] Fatal error during inspection: {e}")
+            return self._error_result(package_name, base_report, str(e))
+
+    def _ensure_decompiled(self, package_name: str):
+        decompiled_dir = self.workspace.get_decompile_path(package_name)
+
+        if not decompiled_dir.exists() or not any(decompiled_dir.iterdir()):
+            self.logger.info(f"[{package_name}] Decompiled folder missing or empty. Starting decompilation...")
+            self.workspace.create_decompile_dir(package_name)
+            decompile_apk(self.apk_path, decompiled_dir)
+        else:
+            self.logger.info(f"[{package_name}] Reusing existing decompiled code.")
+
+    def _perform_static_analysis(self, package_name: str) -> Dict[str, Any]:
+        decompiled_dir = self.workspace.get_decompile_path(package_name)
+        self.logger.info(f"[{package_name}] Running static analysis...")
+        static_result = self.static_analyzer.analyze(self.apk_path, decompiled_dir)
+        return static_result.to_dict()
+
+    def _run_yara_scan(self, package_name: str) -> List:
+        decompiled_dir = self.workspace.get_decompile_path(package_name)
+        self.logger.info(f"[{package_name}] Running YARA scan...")
+        return self.yara_scanner.scan_directory(decompiled_dir)
+
+    def _log_verdict(self, package_name, label, score, reasons, events, yara_hits, static_info):
+        log_verdict_debug(
+            logger=self.logger,
+            package_name=package_name,
+            score=score,
+            verdict_label=label,
+            reasons=reasons,
+            events=events,
+            yara_hits=yara_hits,
+            static_info=static_info
+        )
+
+    def _error_result(self, package: str, base: Dict[str, Any], error_msg: str) -> Dict[str, Any]:
+        return {
+            **base,
+            "verdict": "error",
+            "score": 0,
+            "events": [],
+            "yara_matches": [],
+            "static_analysis": {},
+            "error": error_msg
+        }

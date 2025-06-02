@@ -1,6 +1,9 @@
 from xml.etree import ElementTree as ET
 from pathlib import Path
 from typing import List, Dict
+from apk_inspector.utils.logger import get_logger
+
+logger = get_logger()
 
 ANDROID_NS = "http://schemas.android.com/apk/res/android"
 
@@ -65,5 +68,5 @@ def analyze_manifest(manifest_path: Path) -> dict:
         }
 
     except Exception as e:
-        print(f"[ERROR] Failed to parse AndroidManifest.xml: {e}")
+        logger.error(f"[MANIFEST ANALYZER] Failed to analyze manifest at {manifest_path}: {e}")
         return {}

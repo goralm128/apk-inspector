@@ -1,0 +1,35 @@
+{
+  "network": {
+    "libc.send": 10,
+    "libc.connect": 8,
+    "okhttp3.RealCall.execute": 12,
+    "javax.net.ssl.HttpsURLConnection": 10,
+    "WebView.loadUrl": 15
+  },
+  "evasion": {
+    "Runtime.exec": 25,
+    "DexClassLoader": 20
+  },
+  "filesystem": {
+    "libc.open": 6,
+    "libc.fopen": 5,
+    "libc.fread": 4,
+    "libc.fwrite": 4
+  },
+  "tags": {
+    "auth": 20,
+    "token": 20,
+    "c2": 25,
+    "key": 15,
+    "entropy": 8,
+    "web": 5,
+    "sensitive": 10
+  },
+  "classification_bonus": {
+    "jwt": 15,
+    "api_key": 15,
+    "plaintext_http": 10,
+    "json": 3,
+    "binary": -3
+  }
+}

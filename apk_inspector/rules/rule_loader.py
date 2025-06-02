@@ -3,6 +3,9 @@ from pathlib import Path
 from typing import List
 from apk_inspector.rules.rule_utils import safe_lambda
 from apk_inspector.rules.rule_engine import Rule  # make sure Rule is only a dataclass
+from apk_inspector.utils.logger import get_logger
+
+logger = get_logger()
 
 def load_rules_from_yaml(yaml_path: Path) -> List[Rule]:
     with yaml_path.open(encoding="utf-8") as f:
@@ -22,5 +25,6 @@ def load_rules_from_yaml(yaml_path: Path) -> List[Rule]:
                 severity=entry.get("severity", "medium"),
             ))
         except Exception as e:
-            print(f"[ERROR] Failed to load rule {entry.get('id', 'UNKNOWN')}: {e}")
+            logger.error(f"Failed to load rule {entry.get('id', 'UNKNOWN')}: {e}")
+            
     return rules

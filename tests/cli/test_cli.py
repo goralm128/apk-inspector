@@ -1,6 +1,6 @@
 import pytest
 from argparse import Namespace
-from cli.cli import parse_args
+from cli.test_cli import parse_args
 from pathlib import Path
 
 def test_parse_args_valid(monkeypatch):

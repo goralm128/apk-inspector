@@ -1,6 +1,9 @@
 import subprocess
 import re
 from pathlib import Path
+from apk_inspector.utils.logger import get_logger
+
+logger = get_logger()
 
 def extract_cert_field(output: str, field: str) -> str:
     match = re.search(f"{field}: (.+)", output)
@@ -26,5 +29,5 @@ def analyze_certificate(apk_path: Path) -> dict:
         }
 
     except Exception as e:
-        print(f"[ERROR] Certificate analysis failed: {e}")
+        logger.error(f"[CERT ANALYZER] Failed to analyze certificate for {apk_path}: {e}")
         return {}

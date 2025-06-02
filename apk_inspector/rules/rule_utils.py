@@ -1,7 +1,9 @@
 import jsonschema
 import yaml
 from pathlib import Path
+from apk_inspector.utils.logger import get_logger
 
+logger = get_logger()
 
 # Define the JSON schema for the rules.yaml file
 # This schema is strict and requires all fields to be present and correctly typed.
@@ -44,12 +46,12 @@ def validate_rules_yaml(yaml_path: Path) -> None:
     try:
         rules = yaml.safe_load(yaml_path.read_text(encoding="utf-8"))
         jsonschema.validate(instance=rules, schema=RULES_SCHEMA)
-        print(f"[✓] {yaml_path.name} is valid with {len(rules)} rules.")
+        logger.info(f"[✓] {yaml_path.name} is valid with {len(rules)} rules.")
     except jsonschema.exceptions.ValidationError as ve:
-        print(f"[ERROR] Rule schema validation failed: {ve.message}")
+        logger.error(f"[ERROR] Rule schema validation failed: {ve.message}")
         raise
     except yaml.YAMLError as ye:
-        print(f"[ERROR] Invalid YAML syntax: {ye}")
+        logger.error(f"[ERROR] Invalid YAML syntax in {yaml_path.name}: {ye}")
         raise
 
 

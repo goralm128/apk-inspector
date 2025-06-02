@@ -1,6 +1,9 @@
 from xml.etree import ElementTree as ET
 from pathlib import Path
 from typing import List, Dict
+from apk_inspector.utils.logger import get_logger
+
+logger = get_logger()
 
 
 def analyze_strings_xml(path: Path) -> List[Dict[str, str]]:
@@ -31,6 +34,6 @@ def analyze_strings_xml(path: Path) -> List[Dict[str, str]]:
                 })
 
     except Exception as e:
-        print(f"[WARN] Failed to parse strings.xml: {e}")
+        logger.error(f"[STRINGS XML] Failed to parse {strings_path}: {e}")
 
     return results

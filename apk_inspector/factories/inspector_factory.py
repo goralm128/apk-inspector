@@ -1,22 +1,21 @@
 from pathlib import Path
-from apk_inspector.core.core_controller import APKInspector
-from apk_inspector.reports.report_saver import ReportSaver
+from apk_inspector.core.apk_inspector import APKInspector
 from apk_inspector.core.apk_manager import APKManager
-from apk_inspector.core.yara_scanner import YaraScanner
-from apk_inspector.rules.rule_loader import load_rules_from_yaml 
+from apk_inspector.analysis.yara_scanner import YaraScanner
 from apk_inspector.rules.rule_engine import RuleEngine
+from apk_inspector.rules.rule_loader import load_rules_from_yaml 
 from apk_inspector.rules.rule_utils import validate_rules_yaml
 from apk_inspector.analysis.static.static_analyzer import StaticAnalyzer
 from apk_inspector.reports.report_builder import APKReportBuilder
-from apk_inspector.utils.logger import setup_logger
-from typing import Optional
+from apk_inspector.utils.logger import get_logger
+from apk_inspector.core.workspace_manager import WorkspaceManager
+
 
 def create_apk_inspector(
     apk_path: Path,
     hooks_dir: Path,
-    output_dir: Path,
+    run_dir: Path,
     verbose: bool = False,
-    report_saver: Optional[ReportSaver] = None,
     yara_rules_path: Path = Path("yara_rules"),
     rule_yaml_path: Path = Path("rule_configs/rules.yaml"),
     timeout: int = 120
@@ -26,17 +25,17 @@ def create_apk_inspector(
     """
 
     # Logger
-    logger = setup_logger(verbose)
+    logger = get_logger()
 
-    # Reuse or create ReportSaver
-    report_saver = report_saver or ReportSaver(output_root=output_dir, logger=logger)
+    logger.info(f"Creating APKInspector with run dir {run_dir} and APK path {apk_path}")
+    workspace = WorkspaceManager(run_dir=run_dir)
 
     # APK manager to extract package name
     apk_manager = APKManager(logger=logger)
     package_name = apk_manager.get_package_name(apk_path)
 
     # Analyzer components
-    static_analyzer = StaticAnalyzer(report_saver=report_saver, logger=logger)
+    static_analyzer = StaticAnalyzer(logger=logger)
     yara_scanner = YaraScanner(rules_dir=yara_rules_path)
 
     # Rule engine
@@ -55,7 +54,7 @@ def create_apk_inspector(
         yara_scanner=yara_scanner,
         rule_engine=rule_engine,
         report_builder=report_builder,
-        report_saver=report_saver,
+        workspace=workspace,
         logger=logger,
         timeout=timeout
     )
