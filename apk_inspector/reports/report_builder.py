@@ -1,7 +1,8 @@
 from datetime import datetime
 from pathlib import Path
 from typing import List, Dict, Any
-from apk_inspector.reports.models import Event, YaraMatch, Verdict
+from apk_inspector.reports.models import Event, Verdict
+from apk_inspector.reports.models import YaraMatch, YaraMatchModel
 import hashlib
 from apk_inspector.reports.summary.dynamic_summary import summarize_dynamic_events
 
@@ -11,7 +12,7 @@ class APKReportBuilder:
         self.apk_path = apk_path
         self.verdict = Verdict(score=0, label="benign", reasons=[])
         self.events: List[Event] = []
-        self.yara_matches: List[YaraMatch] = []
+        self.yara_matches: List[YaraMatchModel] = []
         self.static_analysis: Dict[str, Any] = {}
 
     def merge_hook_result(self, hook_result: Dict[str, Any]):

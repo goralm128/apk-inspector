@@ -41,7 +41,7 @@ def create_apk_inspector(
     # Rule engine
     validate_rules_yaml(rule_yaml_path)
     rules = load_rules_from_yaml(rule_yaml_path)
-    rule_engine = RuleEngine(rules)
+    rule_engine = RuleEngine(rules, scoring_profile_path=Path("config/scoring_profile.yaml"))
 
     # Builder
     report_builder = APKReportBuilder(package=package_name, apk_path=apk_path)

@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 from typing import List, Dict, Optional, Any
 import pandas as pd
-from apk_inspector.reports.models import YaraMatch
+from apk_inspector.reports.schemas import YaraMatchModel
 from apk_inspector.utils.logger import get_logger
 
 
@@ -55,7 +55,7 @@ class ReportSaver:
         self._save_json(output_path, report, f"Report for {report['apk_metadata']['package_name']}")
         return output_path
 
-    def save_yara_csv(self, package_name: str, matches: List[YaraMatch]) -> Optional[Path]:
+    def save_yara_csv(self, package_name: str, matches: List[YaraMatchModel]) -> Optional[Path]:
         if not matches:
             self.logger.info(f"[~] No YARA matches to save for {package_name}.")
             return None

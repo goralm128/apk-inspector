@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Any
+from apk_inspector.reports.schemas import YaraMatchModel
 
 
 @dataclass
@@ -38,7 +39,7 @@ class HookResult:
     verdict: str
     score: int
     reasons: List[str]
-    yara_matches: List[YaraMatch]
+    yara_matches: List[YaraMatchModel]
     static_analysis: Dict[str, Any]   
 
 

@@ -3,11 +3,9 @@ import pkg_resources
 import pandas as pd
 from pathlib import Path
 from typing import List
-from apk_inspector.reports.models import YaraMatch
+from apk_inspector.reports.schemas import YaraMatchModel
 from apk_inspector.utils.yara_cleaner import clean_yara_match
-from apk_inspector.utils.yara_evaluator import YaraMatchEvaluator
-from apk_inspector.utils.yara_transform import convert_matches 
-from apk_inspector.utils.yara_utils import serialize_yara_strings
+from apk_inspector.utils.yara_utils import convert_matches, serialize_yara_strings
 from apk_inspector.utils.logger import get_logger
 
 class YaraScanner:
@@ -38,7 +36,7 @@ class YaraScanner:
                 self.logger.error(f"[YARA] Failed to compile {rule_file}: {e}")
         return compiled_rules
 
-    def scan_directory(self, target_dir: Path, max_file_size: int = 5 * 1024 * 1024) -> List[YaraMatch]:
+    def scan_directory(self, target_dir: Path, max_file_size: int = 5 * 1024 * 1024) -> List[YaraMatchModel]:
         if not target_dir.exists():
             self.logger.warning(f"[YARA] Target directory does not exist: {target_dir}")
             return []
@@ -103,13 +101,13 @@ class YaraScanner:
                             )
                             serialized_strings = []
                         
-                        matches.append(YaraMatch(
+                        matches.append(YaraMatchModel(
                             file=str(file.relative_to(target_dir)),
                             rule=match.rule,
                             tags=tags,
                             meta=meta,
                             strings=serialized_strings,
-                            namespace=match.namespace,
+                            namespace=str(match.namespace),
                         ))
                 except Exception as e:
                     self.logger.warning(f"YARA scan failed on {file}: {e}")

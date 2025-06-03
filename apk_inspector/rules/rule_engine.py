@@ -1,8 +1,13 @@
 from dataclasses import dataclass, field
 from typing import Callable, List, Dict, Tuple, Optional, Any
-from apk_inspector.analysis.yara_evaluator import YaraMatchEvaluator
+from apk_inspector.utils.yara_utils import YaraMatchEvaluator
 from apk_inspector.heuristics.static_heuristics import StaticHeuristicEvaluator
 from apk_inspector.reports.models import Verdict
+from apk_inspector.config.scoring_loader import load_scoring_profile
+from pathlib import Path
+from apk_inspector.utils.logger import get_logger
+
+logger = get_logger()
 
 
 @dataclass
@@ -22,87 +27,43 @@ class RuleEngine:
     MALICIOUS_THRESHOLD = 80
     SUSPICIOUS_THRESHOLD = 40
 
-    PATH_TYPE_SCORE = {
-        "sensitive": 20,
-        "system_access": 15,
-        "obfuscated_write": 10,
-        "config": 10,
-        "app_storage": 5,
-        "general": 0
-    }
-
-    CATEGORY_SCORE = {
-        "crypto_usage": 10,
-        "dex_loading": 15,
-        "native_injection": 20,
-        "network_exfiltration": 25,
-        "malicious_behavior": 30,
-        "sensitive_string": 10,
-        "system_behavior": 15,
-        "overlay_abuse": 15,
-        "accessibility_abuse": 15,
-        "reflection": 10
-    }
-
-    TAG_SCORE = {
-        # UI/Permission Abuse
-        "overlay": 10,
-        "accessibility": 10,
-        "clickjacking": 10,
-        "system_alert": 10,
-        "phishing": 15,
-
-        # Code & Runtime Behavior
-        "dex": 10,
-        "code_injection": 15,
-        "jni": 10,
-        "hooking": 15,
-        "libc": 10,
-        "native": 10,
-        "frida": 15,
-        "reflection": 10,
-        "automation": 15,
-        "obfuscation": 10,
-        "entropy": 10,
-
-        # Privilege Abuse / Root Bypass
-        "su": 15,
-        "root": 15,
-
-        # Exfiltration & Network
-        "c2": 20,
-        "http": 10,
-        "dns": 10,
-        "dropzone": 10,
-        "upload": 10,
-        "exfiltration": 20,
-
-        # Crypto & Sensitive Data
-        "crypto": 10,
-        "base64": 5,
-        "short_key": 15,
-        "weak_key": 15,
-        "ecb": 20,
-        "iv": 10,
-        "token": 10,
-        "auth": 10,
-        "jwt": 10,
-        "key": 10,
-
-      # Evasion / Other
-        "evasion": 10,
-        "xor": 10,
-        "keylogger": 20
-    }
-
-    SEVERITY_SCORE = {
-        "low": 5,
-        "medium": 10,
-        "high": 20
-    }
-
-    def __init__(self, rules: List[Rule]):
+    def __init__(self, rules: List[Rule], scoring_profile_path: Optional[Path] = None):
         self.rules = rules
+        scoring_profile_path = scoring_profile_path or Path("config/scoring_profile.yaml")
+        self._load_scoring(scoring_profile_path)
+
+    def _load_scoring(self, path: Path):
+        try:
+            (
+                self.CATEGORY_SCORE,
+                self.TAG_SCORE,
+                self.SEVERITY_SCORE,
+                self.PATH_TYPE_SCORE
+            ) = load_scoring_profile(path)
+
+            # Normalize for consistent access
+            self.CATEGORY_SCORE = {str(k).strip().lower(): v for k, v in self.CATEGORY_SCORE.items()}
+            self.TAG_SCORE = {str(k).strip(): v for k, v in self.TAG_SCORE.items()}
+            self.SEVERITY_SCORE = {str(k).strip().lower(): v for k, v in self.SEVERITY_SCORE.items()}
+            self.PATH_TYPE_SCORE = {str(k).strip().lower(): v for k, v in self.PATH_TYPE_SCORE.items()}
+
+            logger.info(f"[Scoring] Loaded {len(self.TAG_SCORE)} tag scores from: {path}")
+            logger.debug(f"[Scoring] Loaded tag keys: {list(self.TAG_SCORE.keys())}")
+
+        except Exception as e:
+            logger.warning(f"[RuleEngine] Failed to load scoring profile: {e}. Using safe defaults.")
+            self.CATEGORY_SCORE = {}
+            self.TAG_SCORE = {}
+            self.SEVERITY_SCORE = {}
+            self.PATH_TYPE_SCORE = {}
+
+    def _evaluate_static(self, static_info: Dict[str, Any]) -> Tuple[int, List[str]]:
+        try:
+            score, reasons = StaticHeuristicEvaluator.evaluate(static_info)
+            return min(score, 20), [f"[STATIC] {r}" for r in reasons]
+        except Exception as e:
+            logger.exception("[RuleEngine] Static analysis failed")
+            return 0, [f"[ERROR] Static analysis failure: {e}"]
 
     def _evaluate_dynamic(self, events: List[Dict[str, Any]]) -> Tuple[int, List[str], int, bool]:
         score = 0
@@ -119,8 +80,9 @@ class RuleEngine:
                 try:
                     if rule.condition(event):
                         triggered_severities.append(rule.severity)
-                        event.setdefault("metadata", {}).setdefault("triggered_rules", []).append(rule.id)
-                        event["metadata"].setdefault("rule_severities", []).append(rule.severity)
+                        metadata = event.setdefault("metadata", {})
+                        metadata.setdefault("triggered_rules", []).append(rule.id)
+                        metadata.setdefault("rule_severities", []).append(rule.severity)
 
                         if rule.cvss > 0:
                             score += int(rule.cvss)
@@ -141,14 +103,42 @@ class RuleEngine:
 
             path_type = event.get("path_type")
             if path_type:
-                pts = self.PATH_TYPE_SCORE.get(path_type, 0)
+                pts = self.PATH_TYPE_SCORE.get(str(path_type).strip().lower(), 0)
                 if pts > 0:
                     score += pts
                     reasons.append(f"[DYNAMIC] Accessed {path_type} path: {event.get('path') or event.get('file')}")
 
         return score, reasons, high_risk_event_count, network_activity_detected
 
-    
+    def _evaluate_yara(self, yara_hits: List[Dict[str, Any]]) -> Tuple[int, List[str]]:
+        try:
+            logger.info(f"[RuleEngine] Evaluating {len(yara_hits)} raw YARA hits")
+
+            unique_hits = []
+            seen = set()
+            for hit in yara_hits:
+                key = (hit.get("rule"), frozenset(hit.get("tags", [])))
+                if key not in seen:
+                    seen.add(key)
+                    unique_hits.append(hit)
+
+            score, reasons = YaraMatchEvaluator.evaluate(
+                unique_hits,
+                category_score=self.CATEGORY_SCORE,
+                tag_score=self.TAG_SCORE,
+                severity_score=self.SEVERITY_SCORE
+            )
+
+            logger.info(f"[RuleEngine] Deduplicated to {len(unique_hits)} YARA hits")
+            logger.debug(f"[RuleEngine] Category keys: {list(self.CATEGORY_SCORE.keys())}")
+            logger.debug(f"[RuleEngine] Tag keys: {list(self.TAG_SCORE.keys())}")
+            logger.debug(f"[RuleEngine] Severity keys: {list(self.SEVERITY_SCORE.keys())}")
+            return min(score, 10), [f"[YARA] {r}" for r in reasons]
+
+        except Exception as e:
+            logger.exception("[RuleEngine] YARA evaluation failed")
+            return 0, [f"[ERROR] YARA evaluation failure: {e}"]
+
     def _label_from_score(self, total_score: int, dynamic_score: int = 0) -> str:
         if total_score >= self.MALICIOUS_THRESHOLD:
             return "malicious"
@@ -162,33 +152,35 @@ class RuleEngine:
         static_info: Optional[Dict[str, Any]] = None,
         yara_hits: Optional[List[Dict[str, Any]]] = None
     ) -> Verdict:
+        reasons: List[str] = []
         total_score = 0
-        reasons = []
 
-        static_score = 0
+        logger.debug(f"[RuleEngine] Starting evaluation with {len(events)} events and {len(yara_hits or [])} YARA hits")
+
+        # --- Static ---
+        static_score, static_reasons = (0, [])
         if static_info:
-            static_score, static_reasons = StaticHeuristicEvaluator.evaluate(static_info)
-            static_score = min(static_score, 20)
-            reasons.extend([f"[STATIC] {r}" for r in static_reasons])
+            static_score, static_reasons = self._evaluate_static(static_info)
+        reasons.extend(static_reasons)
 
-        dynamic_score, dynamic_reasons, high_risk_events, network_flag = self._evaluate_dynamic(events)
-        dynamic_score = min(dynamic_score, 70)
-        reasons.extend([f"[DYNAMIC] {r}" for r in dynamic_reasons])
+        # --- Dynamic ---
+        dynamic_score, dynamic_reasons, high_risk_events, network_flag = (0, [], 0, False)
+        if events:
+            dynamic_score, dynamic_reasons, high_risk_events, network_flag = self._evaluate_dynamic(events)
+        reasons.extend(dynamic_reasons)
 
-        yara_score = 0
+        # --- YARA ---
+        yara_score, yara_reasons = (0, [])
         if yara_hits:
-            yara_score, yara_reasons = YaraMatchEvaluator.evaluate(
-                yara_hits,
-                category_score=self.CATEGORY_SCORE,
-                tag_score=self.TAG_SCORE,
-                severity_score=self.SEVERITY_SCORE
-            )
+            yara_score, yara_reasons = self._evaluate_yara(yara_hits)
+        reasons.extend(yara_reasons)
 
-            yara_score = min(yara_score, 10)
-            reasons.extend([f"[YARA] {r}" for r in yara_reasons])
-
+        # --- Verdict ---
         total_score = static_score + dynamic_score + yara_score
         label = self._label_from_score(total_score, dynamic_score)
+
+        logger.info(f"[RuleEngine] Final score: {total_score}, label: {label}")
+        logger.debug(f"[RuleEngine] Reason breakdown: {reasons}")
 
         return Verdict(
             score=min(total_score, 100),
@@ -197,6 +189,3 @@ class RuleEngine:
             high_risk_event_count=high_risk_events,
             network_activity_detected=network_flag
         )
-
-
-            

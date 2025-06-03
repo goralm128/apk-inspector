@@ -1,0 +1,72 @@
+---
+category_score:
+  crypto_usage: 10
+  dex_loading: 15
+  native_injection: 20
+  network_exfiltration: 25
+  malicious_behavior: 30
+  sensitive_string: 10
+  system_behavior: 15
+  overlay_abuse: 15
+  accessibility_abuse: 15
+  reflection: 10
+tag_score:
+  # UI/Permission Abuse
+  overlay: 10
+  accessibility: 10
+  clickjacking: 10
+  system_alert: 10
+  phishing: 15
+  ui_hijack: 15
+  # Code & Runtime Behavior
+  dex: 10
+  code_injection: 15
+  jni: 10
+  hooking: 15
+  libc: 10
+  native: 10
+  frida: 15
+  reflection: 10
+  automation: 15
+  obfuscation: 10
+  entropy: 10
+  weak_crypto: 15  # newly added
+  # Privilege Abuse / Root Bypass
+  su: 15
+  root: 15
+  # Exfiltration & Network
+  c2: 20
+  http: 10
+  dns: 10
+  dropzone: 10
+  upload: 10
+  exfiltration: 20
+  ip_address: 10  # newly added
+  # Crypto & Sensitive Data
+  crypto: 10
+  crypto_usage: 10  # newly added
+  base64: 5
+  short_key: 15
+  weak_key: 15
+  ecb: 20
+  iv: 10
+  token: 10
+  auth: 10
+  jwt: 10
+  key: 10
+  # Evasion / Other
+  evasion: 10
+  xor: 10
+  keylogger: 20
+severity_score:
+  low: 5
+  medium: 10
+  high: 20
+path_type_score:
+  sensitive: 20
+  system_access: 15
+  obfuscated_write: 10
+  config: 10
+  app_storage: 5
+  general: 0
+

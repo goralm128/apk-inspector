@@ -1,8 +1,9 @@
 import json
-import logging
 from ipaddress import ip_address, ip_network
+from apk_inspector.utils.logger import get_logger
 
-logger = logging.getLogger("APKInspector")
+
+logger = get_logger()   
 
 # ───────────────────────────────────────────────
 # Utility: Check if an IP is private/local
