@@ -9,6 +9,7 @@ from apk_inspector.analysis.static.static_analyzer import StaticAnalyzer
 from apk_inspector.reports.report_builder import APKReportBuilder
 from apk_inspector.utils.logger import get_logger
 from apk_inspector.core.workspace_manager import WorkspaceManager
+from apk_inspector.config.defaults import DEFAULT_RULES_PATH, DEFAULT_SCORING_PROFILE_PATH
 
 
 def create_apk_inspector(
@@ -17,7 +18,7 @@ def create_apk_inspector(
     run_dir: Path,
     verbose: bool = False,
     yara_rules_path: Path = Path("yara_rules"),
-    rule_yaml_path: Path = Path("rule_configs/rules.yaml"),
+    rule_yaml_path: Path = DEFAULT_RULES_PATH,
     timeout: int = 120
 ) -> APKInspector:
     """
@@ -41,7 +42,7 @@ def create_apk_inspector(
     # Rule engine
     validate_rules_yaml(rule_yaml_path)
     rules = load_rules_from_yaml(rule_yaml_path)
-    rule_engine = RuleEngine(rules, scoring_profile_path=Path("config/scoring_profile.yaml"))
+    rule_engine = RuleEngine(rules, scoring_profile_path=DEFAULT_SCORING_PROFILE_PATH)
 
     # Builder
     report_builder = APKReportBuilder(package=package_name, apk_path=apk_path)

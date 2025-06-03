@@ -5,6 +5,7 @@ from apk_inspector.reports.models import ApkSummary
 from apk_inspector.analysis.justification_analyzer import JustificationAnalyzer
 from apk_inspector.config.defaults import DEFAULT_DYNAMIC_SUMMARY
 from apk_inspector.reports.summary.csv_summary_exporter import CsvSummaryExporter
+from apk_inspector.utils.scoring_utils import compute_cvss_band
 from apk_inspector.utils.logger import get_logger
 
 class ApkSummaryBuilder:
@@ -48,15 +49,8 @@ class ApkSummaryBuilder:
             ]
             max_cvss = max(cvss_scores, default=0.0)
 
-            def map_cvss_band(cvss):
-                if cvss >= 9.0: return "Critical"
-                elif cvss >= 7.0: return "High"
-                elif cvss >= 4.0: return "Medium"
-                elif cvss > 0.0: return "Low"
-                return "Unknown"
-
-            cvss_band = map_cvss_band(max_cvss)
-
+            cvss_band = compute_cvss_band(max_cvss)
+            
             return ApkSummary(
                 apk_name=meta.get("apk_name", meta.get("package_name", "unknown.apk")),
                 apk_package=meta.get("package_name", "unknown.package"),

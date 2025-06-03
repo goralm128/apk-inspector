@@ -1,10 +1,16 @@
-from datetime import datetime
+
+import hashlib
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Dict, Any
 from apk_inspector.reports.models import Event, Verdict
-from apk_inspector.reports.models import YaraMatch, YaraMatchModel
-import hashlib
+from apk_inspector.reports.models import YaraMatchModel
 from apk_inspector.reports.summary.dynamic_summary import summarize_dynamic_events
+from apk_inspector.rules.apply import apply_rules
+from apk_inspector.utils.scoring_utils import compute_cvss_band
+from apk_inspector.config.scoring_loader import load_scoring_profile
+from apk_inspector.rules.apply import apply_rules
+from apk_inspector.config.defaults import DEFAULT_SCORING_PROFILE_PATH 
 
 class APKReportBuilder:
     def __init__(self, package: str, apk_path: Path):
@@ -16,20 +22,22 @@ class APKReportBuilder:
         self.static_analysis: Dict[str, Any] = {}
 
     def merge_hook_result(self, hook_result: Dict[str, Any]):
-        for e in hook_result.get("events", []):
-            normalized = {
-                "source": e.get("source", "unknown"),
-                "timestamp": e.get("timestamp", "1970-01-01T00:00:00Z"),
-                "action": e.get("action") or e.get("event", "unknown"),
-                "metadata": {k: v for k, v in e.items() if k not in {"source", "timestamp", "action", "event"}}
-            }
-            self.events.append(Event(**normalized))
+        for raw_event in hook_result.get("events", []):
+            event = Event.from_dict(raw_event)
 
+            # Inject extra fields
+            event.metadata.setdefault("event_id", event.event_id)
+            event.metadata.setdefault("process_name", raw_event.get("process_name", "unknown"))
+            event.metadata.setdefault("pid", raw_event.get("pid", -1))
+            event.metadata.setdefault("count", 1)  # For future aggregation
+
+            self.events.append(event)
+
+        # Handle verdict
         verdict = hook_result.get("verdict")
         if isinstance(verdict, Verdict):
             self.verdict = verdict
         else:
-            # fallback to legacy dict form
             self.verdict.reasons.extend(hook_result.get("reasons", []))
             self.verdict.score += hook_result.get("score", 0)
             self.verdict.label = hook_result.get("verdict", self.verdict.label)
@@ -51,26 +59,28 @@ class APKReportBuilder:
         return summarize_dynamic_events([e.__dict__ for e in self.events])
 
     def build(self) -> Dict[str, Any]:
+        dynamic_summary = self._summarize_events()
+        score, reasons = apply_rules([e.__dict__ for e in self.events], load_scoring_profile(DEFAULT_SCORING_PROFILE_PATH))
+        self.verdict.score = score
+        self.verdict.reasons = reasons
+        self.verdict.cvss_risk_band = compute_cvss_band(score)
         report = {
             "apk_metadata": {
                 "package_name": self.package,
-                "analyzed_at": datetime.utcnow().isoformat() + "Z",
+                "analyzed_at": datetime.now(timezone.utc).isoformat(),
                 "hash": self._get_hashes()
             },
             "static_analysis": self.static_analysis,
-            "yara_matches": [
-                m.to_dict() if isinstance(m, YaraMatch) else m
-                for m in self.yara_matches
-            ],
+            "yara_matches": [m.to_dict() for m in self.yara_matches],
             "dynamic_analysis": {
                 "events": [e.__dict__ for e in self.events],
-                "summary": self._summarize_events()
+                "summary": dynamic_summary
             },
             "classification": {
                 "verdict": self.verdict.label,
-                "score": min(self.verdict.score, 100),
-                "flags": self.verdict.reasons
+                "score": self.verdict.score,
+                "flags": self.verdict.reasons,
+                "cvss_risk_band": self.verdict.cvss_risk_band
             }
         }
-        
         return report

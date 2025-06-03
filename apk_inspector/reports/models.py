@@ -1,36 +1,28 @@
 from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Any
+from uuid import uuid4
 from apk_inspector.reports.schemas import YaraMatchModel
 
 
 @dataclass
 class Event:
-    source: str
-    timestamp: str  # use ISO string
-    action: str
+    event_id: str = field(default_factory=lambda: str(uuid4()))
+    source: str = "unknown"
+    timestamp: str = "1970-01-01T00:00:00Z"  # ISO format
+    action: str = "unknown"
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-@dataclass
-class YaraMatch:
-    file: str
-    rule: str
-    tags: List[str] = field(default_factory=list)
-    meta: Dict[str, Any] = field(default_factory=dict)
-    strings: List = field(default_factory=list)
-    namespace: str = ""
-   
-    def to_dict(self) -> Dict[str, Any]:
-        return asdict(self)
-
     @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> "YaraMatch":
+    def from_dict(cls, data: Dict[str, Any]) -> 'Event':
+        raw_meta = data.get('metadata', {})
+        inner_meta = raw_meta.pop('metadata', {}) if isinstance(raw_meta, dict) else {}
+        raw_meta.update(inner_meta)  # Flatten nested metadata
+
         return cls(
-            file=data.get("file", ""),
-            rule=data.get("rule", ""),
-            tags=data.get("tags", []),
-            meta=data.get("meta", {}),
-            strings=data.get("strings", []),
-            namespace=data.get("namespace", "")
+            source=data.get('source') or raw_meta.get('source_hook', 'unknown'),
+            timestamp=data.get('timestamp', '1970-01-01T00:00:00Z'),
+            action=data.get('action', data.get('event', 'unknown')),
+            metadata=raw_meta
         )
     
 @dataclass
@@ -51,8 +43,8 @@ class Verdict:
     reasons: List[str]
     high_risk_event_count: int = 0
     network_activity_detected: bool = False
+    cvss_risk_band: str = "Unknown"
     
-
 @dataclass
 class ApkSummary:
     apk_name: str

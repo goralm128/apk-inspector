@@ -4,8 +4,9 @@ from apk_inspector.utils.yara_utils import YaraMatchEvaluator
 from apk_inspector.heuristics.static_heuristics import StaticHeuristicEvaluator
 from apk_inspector.reports.models import Verdict
 from apk_inspector.config.scoring_loader import load_scoring_profile
-from pathlib import Path
+from apk_inspector.config.defaults import DEFAULT_SCORING_PROFILE_PATH
 from apk_inspector.utils.logger import get_logger
+from pathlib import Path
 
 logger = get_logger()
 
@@ -29,7 +30,7 @@ class RuleEngine:
 
     def __init__(self, rules: List[Rule], scoring_profile_path: Optional[Path] = None):
         self.rules = rules
-        scoring_profile_path = scoring_profile_path or Path("config/scoring_profile.yaml")
+        scoring_profile_path = scoring_profile_path or DEFAULT_SCORING_PROFILE_PATH 
         self._load_scoring(scoring_profile_path)
 
     def _load_scoring(self, path: Path):
@@ -81,13 +82,35 @@ class RuleEngine:
                     if rule.condition(event):
                         triggered_severities.append(rule.severity)
                         metadata = event.setdefault("metadata", {})
+                        # Initialize required metadata fields
                         metadata.setdefault("triggered_rules", []).append(rule.id)
                         metadata.setdefault("rule_severities", []).append(rule.severity)
 
+                        # Flatten category and tags
+                        category = metadata.get("category", "").strip().lower()
+                        tags = metadata.get("tags", [])
+
+                        # Score sources
+                        category_score = self.CATEGORY_SCORE.get(category, 0)
+                        tag_matches = [tag for tag in tags if tag in self.TAG_SCORE]
+                        tags_score = sum(self.TAG_SCORE.get(tag, 0) for tag in tag_matches)
+                        bonus = self.SEVERITY_SCORE.get(rule.severity.lower(), 0)
+
+                        # Update justification dictionary
+                        metadata["justification"] = {
+                            "source": rule.id,
+                            "category_score": category_score,
+                            "tags_score": tags_score,
+                            "classification_bonus": bonus,
+                            "tag_matches": tag_matches,
+                            "classification": rule.severity
+                        }
+
+                        # Risk classification
                         if rule.cvss > 0:
                             score += int(rule.cvss)
                         else:
-                            score += rule.weight + self.SEVERITY_SCORE.get(rule.severity, 0)
+                            score += rule.weight + bonus
 
                         reasons.append(f"[{rule.severity.upper()}] Rule {rule.id}: {rule.description}")
 
@@ -97,6 +120,8 @@ class RuleEngine:
             if any(s in {"high", "critical"} for s in triggered_severities):
                 event["metadata"]["risk_level"] = "high"
                 high_risk_event_count += 1
+            else:
+                event["metadata"]["risk_level"] = max(triggered_severities, key=lambda s: self.SEVERITY_SCORE.get(s, 0), default="low")
 
             if event.get("metadata", {}).get("category") == "network":
                 network_activity_detected = True
