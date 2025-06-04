@@ -5,6 +5,23 @@ from apk_inspector.utils.logger import get_logger
 
 logger = get_logger()
 
+def build_minimal_yara_models(rule_names: List[str]) -> List[YaraMatchModel]:
+    """
+    Given a list of raw rule names (e.g., from JSON), return YaraMatchModel stubs
+    for evaluation/logging purposes.
+    """
+    models = []
+    for name in rule_names:
+        models.append(YaraMatchModel(
+            rule=name,
+            tags=[name],  # crude fallback
+            meta={"source": "json_stub"},
+            file="unknown",
+            strings=[],
+            namespace="default"
+        ))
+    return models
+
 def ensure_yara_models(matches: List[Any]) -> List[YaraMatchModel]:
     """
     Ensures each item in the list is a YaraMatchModel instance.

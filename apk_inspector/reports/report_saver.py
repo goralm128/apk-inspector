@@ -60,37 +60,43 @@ class ReportSaver:
             self.logger.info(f"[~] No YARA matches to save for {package_name}.")
             return None
 
-        rows = []
+        from collections import defaultdict
+        import pandas as pd
+
+        # Group by (rule, category, file)
+        grouped = defaultdict(lambda: {
+            "package": package_name,
+            "rule": "",
+            "category": "",
+            "severity": "",
+            "confidence": "",
+            "tags": "",
+            "file": "",
+            "match_count": 0
+        })
+
         for match in matches:
-            for s in match.strings:
-                try:
-                    offset =s["offset"]
-                    string_id = s["identifier"]
-                    content = s["data"]
-                except (TypeError, KeyError):
-                    self.logger.warning(f"[YARA] Missing key in string match: {e}")
-                    continue # skip this string if it fails
-                rows.append({
-                    "file": match.file,
-                    "rule": match.rule,
-                    "string_id": string_id,
-                    "match": content,
-                    "offset": offset,
-                    "tags": ", ".join(match.tags),
-                    "category": match.meta.get("category", ""),
-                    "severity": match.meta.get("severity", ""),
-                    "confidence": match.meta.get("confidence", "")
-                })
+            key = (match.rule, match.meta.get("category", "uncategorized"), match.file)
+            group = grouped[key]
 
+            group["rule"] = match.rule
+            group["category"] = match.meta.get("category", "uncategorized")
+            group["severity"] = match.meta.get("severity", "medium")
+            group["confidence"] = match.meta.get("confidence", "")
+            group["tags"] = ", ".join(match.tags)
+            group["file"] = match.file
+            group["match_count"] += 1
+
+        rows = list(grouped.values())
         df = pd.DataFrame(rows)
-        csv_path = self.run_dir / f"{package_name}_yara_matches.csv"
 
+        csv_path = self.run_dir / f"{package_name}_yara_summary.csv"
         try:
             df.to_csv(csv_path, index=False)
-            self.logger.info(f"[✓] Saved YARA match CSV for {package_name} to {csv_path.resolve()}")
+            self.logger.info(f"[✓] Saved enriched YARA summary CSV to: {csv_path.resolve()}")
             return csv_path
         except Exception as e:
-            self.logger.error(f"[✗] Failed to write YARA CSV for {package_name}: {e}")
+            self.logger.error(f"[✗] Failed to save enriched YARA summary CSV: {e}")
             return None
 
     def save_yara_summary_json(self, results: List[Dict[str, Any]]):

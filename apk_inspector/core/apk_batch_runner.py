@@ -1,6 +1,7 @@
 
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
+from functools import partial
 from multiprocessing import get_context
 
 from apk_inspector.reports.report_manager import ReportManager
@@ -8,6 +9,7 @@ from apk_inspector.reports.models import ApkSummary
 from apk_inspector.analysis.apk_analysis import analyze_apk_and_summarize
 from apk_inspector.utils.logger import get_logger
 from apk_inspector.utils.report_utils import build_error_report
+from apk_inspector.utils.batch_helpers import safe_analyze_parallel
 
 
 class APKBatchRunner:
@@ -31,6 +33,7 @@ class APKBatchRunner:
         self.parallel = parallel
         
         self.report_manager = report_manager
+        self.report_saver = report_manager.report_saver
         self.logger = get_logger()
 
     def run(self):
@@ -41,6 +44,7 @@ class APKBatchRunner:
         valid_results = self._filter_valid_results(results)
         
         self.report_manager.store_analysis_results(valid_results)
+      
         self.logger.info(f"[✓] Analysis complete: {len(valid_results)}/{len(self.apk_paths)} valid results stored.")
 
     def _run_serial(self) -> List[Tuple[Dict[str, Any], ApkSummary]]:
@@ -54,6 +58,9 @@ class APKBatchRunner:
                         verbose=True,
                         timeout=self.timeout
                     )
+                    #  Save individual full report
+                    self.report_saver.save_report(full_report)
+
                     results.append((full_report, summary))
                 except Exception as e:
                     self.logger.error(f"[✗] Analysis failed for {apk_path.name}: {e}")
@@ -61,23 +68,18 @@ class APKBatchRunner:
             return results        
 
     def _run_parallel(self) -> List[Tuple[Dict[str, Any], ApkSummary]]:
-        def safe_analyze(apk_path: Path) -> Tuple[Dict[str, Any], ApkSummary]:
-            try:
-                return analyze_apk_and_summarize(
-                    apk_path,
-                    hooks_dir=self.hooks_dir,
-                    run_dir=self.report_manager.run_dir,
-                    verbose=True,
-                    timeout=self.timeout
-                )
-            except Exception as e:
-                self.logger.error(f"[✗] Parallel analysis failed for {apk_path.name}: {e}")
-                return build_error_report(apk_path, str(e)), ApkSummary.from_dict({"error": str(e)})
+
+        safe_func = partial(
+            safe_analyze_parallel,
+            hooks_dir=self.hooks_dir,
+            run_dir=self.report_manager.run_dir,
+            timeout=self.timeout
+        )
 
         with get_context("spawn").Pool(processes=min(4, len(self.apk_paths))) as pool:
-            results = pool.map(safe_analyze, self.apk_paths)
+            results = pool.map(safe_func, self.apk_paths)
 
-        return results 
+        return results
     
     def _filter_valid_results(
         self, results: List[Tuple[Dict[str, Any], ApkSummary]]
@@ -90,3 +92,4 @@ class APKBatchRunner:
                 pkg = full_report.get("package", "unknown")
                 self.logger.warning(f"[!] Skipping result for {pkg}: Missing apk_metadata.")
         return valid
+    
