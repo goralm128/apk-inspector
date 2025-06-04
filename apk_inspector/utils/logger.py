@@ -2,7 +2,7 @@ import logging
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-# 🔒 Centralized logger name
+# Centralized logger name
 LOGGER_NAME = "apk_inspector"
 
 def init_logging(

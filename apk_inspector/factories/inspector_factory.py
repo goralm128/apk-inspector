@@ -45,7 +45,7 @@ def create_apk_inspector(
     rule_engine = RuleEngine(rules, scoring_profile_path=DEFAULT_SCORING_PROFILE_PATH)
 
     # Builder
-    report_builder = APKReportBuilder(package=package_name, apk_path=apk_path)
+    report_builder = APKReportBuilder(package=package_name, apk_path=apk_path, rule_engine=rule_engine)
 
     # Compose inspector
     return APKInspector(

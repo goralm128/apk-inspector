@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Any
 from uuid import uuid4
+from datetime import datetime
 from apk_inspector.reports.schemas import YaraMatchModel
 
 
@@ -8,7 +9,7 @@ from apk_inspector.reports.schemas import YaraMatchModel
 class Event:
     event_id: str = field(default_factory=lambda: str(uuid4()))
     source: str = "unknown"
-    timestamp: str = "1970-01-01T00:00:00Z"  # ISO format
+    timestamp: str = field(default_factory=lambda: datetime.now().isoformat(timespec="microseconds") + "Z")
     action: str = "unknown"
     metadata: Dict[str, Any] = field(default_factory=dict)
 
@@ -19,8 +20,8 @@ class Event:
         raw_meta.update(inner_meta)  # Flatten nested metadata
 
         return cls(
-            source=data.get('source') or raw_meta.get('source_hook', 'unknown'),
-            timestamp=data.get('timestamp', '1970-01-01T00:00:00Z'),
+            source=data.get("source") or raw_meta.get("source_hook") or raw_meta.get("process_name") or "unknown",
+            timestamp=data.get('timestamp') or datetime.now().isoformat(timespec="microseconds") + "Z",
             action=data.get('action', data.get('event', 'unknown')),
             metadata=raw_meta
         )

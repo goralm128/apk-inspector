@@ -10,7 +10,7 @@ from apk_inspector.core.workspace_manager import WorkspaceManager
 from apk_inspector.utils.logger import get_logger
 from apk_inspector.core.decompiler import decompile_apk
 from apk_inspector.reports.models import Verdict
-from apk_inspector.utils.yara_utils import convert_matches
+from apk_inspector.utils.yara_utils import ensure_yara_models
 from apk_inspector.utils.logger import log_verdict_debug
 
 
@@ -57,7 +57,12 @@ class APKInspector:
         try:
             self._ensure_decompiled(package_name)
             static_info = self._perform_static_analysis(package_name)
-            yara_matches = self._run_yara_scan(package_name)
+
+            raw_yara_matches = self._run_yara_scan(package_name)
+            if raw_yara_matches is None:
+                raw_yara_matches = []
+            yara_models = ensure_yara_models(raw_yara_matches)
+            self.logger.info(f"[{package_name}] {len(yara_models)} validated YARA matches found.")
 
             dynamic_analyzer = DynamicAnalyzer(
                 hooks_dir=self.hooks_dir,
@@ -65,23 +70,20 @@ class APKInspector:
                 timeout=self.timeout
             )
             events = dynamic_analyzer.analyze(package_name)
-
             self.logger.info(f"[{package_name}] Dynamic analysis collected {len(events)} events.")
 
-            # Evaluate using RuleEngine and get full Verdict object
             verdict = self.rule_engine.evaluate(
                 events=events,
-                yara_hits=convert_matches(yara_matches),
+                yara_hits=[m.model_dump() for m in yara_models],
                 static_info=static_info
             )
 
-            # Pass full verdict to logging and report builder
-            self._log_verdict(package_name, verdict, events, yara_matches, static_info)
+            self._log_verdict(package_name, verdict, events, raw_yara_matches, static_info)
 
-            self.report_builder.set_static_analysis(convert_matches(yara_matches), static_info)
+            self.report_builder.set_static_analysis(yara_models, static_info)
             self.report_builder.merge_hook_result({
                 "events": events,
-                "verdict": verdict  # 👈 no longer a tuple!
+                "verdict": verdict
             })
 
             final_report = self.report_builder.build()

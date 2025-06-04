@@ -73,57 +73,27 @@ class RuleEngine:
         network_activity_detected = False
 
         for event in events:
-            triggered_severities = []
+            metadata = event.setdefault("metadata", {})
+            triggered_info = self._apply_rules_to_event(event)
 
-            for rule in self.rules:
-                if rule.disabled:
-                    continue
-                try:
-                    if rule.condition(event):
-                        triggered_severities.append(rule.severity)
-                        metadata = event.setdefault("metadata", {})
-                        # Initialize required metadata fields
-                        metadata.setdefault("triggered_rules", []).append(rule.id)
-                        metadata.setdefault("rule_severities", []).append(rule.severity)
+            if triggered_info:
+                triggered_rules, rule_severities, justification, bonus_score, rule_reasons = triggered_info
+                metadata["triggered_rules"] = triggered_rules
+                metadata["rule_severities"] = rule_severities
+                metadata["justification"] = justification
+                score += bonus_score
+                reasons.extend(rule_reasons)
 
-                        # Flatten category and tags
-                        category = metadata.get("category", "").strip().lower()
-                        tags = metadata.get("tags", [])
-
-                        # Score sources
-                        category_score = self.CATEGORY_SCORE.get(category, 0)
-                        tag_matches = [tag for tag in tags if tag in self.TAG_SCORE]
-                        tags_score = sum(self.TAG_SCORE.get(tag, 0) for tag in tag_matches)
-                        bonus = self.SEVERITY_SCORE.get(rule.severity.lower(), 0)
-
-                        # Update justification dictionary
-                        metadata["justification"] = {
-                            "source": rule.id,
-                            "category_score": category_score,
-                            "tags_score": tags_score,
-                            "classification_bonus": bonus,
-                            "tag_matches": tag_matches,
-                            "classification": rule.severity
-                        }
-
-                        # Risk classification
-                        if rule.cvss > 0:
-                            score += int(rule.cvss)
-                        else:
-                            score += rule.weight + bonus
-
-                        reasons.append(f"[{rule.severity.upper()}] Rule {rule.id}: {rule.description}")
-
-                except Exception as e:
-                    reasons.append(f"[WARN] Rule {rule.id} failed: {e}")
-
-            if any(s in {"high", "critical"} for s in triggered_severities):
-                event["metadata"]["risk_level"] = "high"
-                high_risk_event_count += 1
+                # Risk classification
+                if any(s in {"high", "critical"} for s in rule_severities):
+                    metadata["risk_level"] = "high"
+                    high_risk_event_count += 1
+                else:
+                    metadata["risk_level"] = max(rule_severities, key=lambda s: self.SEVERITY_SCORE.get(s, 0), default="low")
             else:
-                event["metadata"]["risk_level"] = max(triggered_severities, key=lambda s: self.SEVERITY_SCORE.get(s, 0), default="low")
+                metadata["risk_level"] = "low"
 
-            if event.get("metadata", {}).get("category") == "network":
+            if metadata.get("category") == "network":
                 network_activity_detected = True
 
             path_type = event.get("path_type")
@@ -135,6 +105,50 @@ class RuleEngine:
 
         return score, reasons, high_risk_event_count, network_activity_detected
 
+    def _apply_rules_to_event(self, event: Dict[str, Any]) -> Optional[Tuple[List[str], List[str], Dict[str, Any], int, List[str]]]:
+        """Apply rules to a single event and return metadata enrichment."""
+        triggered_rules = []
+        rule_severities = []
+        rule_reasons = []
+        total_bonus = 0
+
+        metadata = event.get("metadata", {})
+        category = metadata.get("category", "").strip().lower()
+        tags = metadata.get("tags", [])
+
+        category_score = self.CATEGORY_SCORE.get(category, 0)
+        tag_matches = [tag for tag in tags if tag in self.TAG_SCORE]
+        tags_score = sum(self.TAG_SCORE.get(tag, 0) for tag in tag_matches)
+
+        for rule in self.rules:
+            if rule.disabled:
+                continue
+            try:
+                if rule.condition(event):
+                    triggered_rules.append(rule.id)
+                    rule_severities.append(rule.severity)
+
+                    bonus = self.SEVERITY_SCORE.get(rule.severity.lower(), 0)
+                    total_bonus += rule.weight + bonus if rule.cvss <= 0 else int(rule.cvss)
+
+                    rule_reasons.append(f"[{rule.severity.upper()}] Rule {rule.id}: {rule.description}")
+            except Exception as e:
+                rule_reasons.append(f"[WARN] Rule {rule.id} failed: {e}")
+
+        if not triggered_rules:
+            return None
+
+        justification = {
+            "source": ", ".join(triggered_rules),
+            "category_score": category_score,
+            "tags_score": tags_score,
+            "classification_bonus": total_bonus,
+            "tag_matches": tag_matches,
+            "classification": max(rule_severities, key=lambda s: self.SEVERITY_SCORE.get(s, 0), default="low")
+        }
+
+        return triggered_rules, rule_severities, justification, total_bonus, rule_reasons
+    
     def _evaluate_yara(self, yara_hits: List[Dict[str, Any]]) -> Tuple[int, List[str]]:
         try:
             logger.info(f"[RuleEngine] Evaluating {len(yara_hits)} raw YARA hits")

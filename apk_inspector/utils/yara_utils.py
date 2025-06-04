@@ -5,6 +5,33 @@ from apk_inspector.utils.logger import get_logger
 
 logger = get_logger()
 
+def ensure_yara_models(matches: List[Any]) -> List[YaraMatchModel]:
+    """
+    Ensures each item in the list is a YaraMatchModel instance.
+    Validates and logs issues with malformed inputs.
+    """
+    result = []
+    for index, raw in enumerate(matches):
+        try:
+            if isinstance(raw, YaraMatchModel):
+                result.append(raw)
+            elif isinstance(raw, dict):
+                result.append(YaraMatchModel(**raw))
+            elif hasattr(raw, "to_dict"):
+                result.append(YaraMatchModel(**raw.to_dict()))
+            else:
+                logger.warning(f"[YARA] Unsupported match type at index {index}: {type(raw)}")
+        except ValidationError as ve:
+            logger.error(f"[YARA] Validation failed at index {index}: {ve}")
+        except Exception as e:
+            logger.exception(f"[YARA] Unexpected error at index {index}: {e}")
+    return result
+
+def serialize_yara_models(models: List[YaraMatchModel]) -> List[Dict[str, Any]]:
+    """
+    Serializes validated YaraMatchModel instances to plain dicts.
+    """
+    return [m.model_dump() for m in models]
 
 def clean_yara_match(match: Any, enable_logging: bool = True) -> Tuple[List[str], Dict[str, Any]]:
     """
@@ -87,33 +114,8 @@ def serialize_yara_strings(strings: List[Any]) -> List[Dict[str, Any]]:
 
 
 def convert_matches(matches: List[Any]) -> List[Dict[str, Any]]:
-    """
-    Converts raw YARA hits to a list of validated YaraMatchModel dicts.
-    Skips and logs invalid entries.
-    """
-    result: List[Dict[str, Any]] = []
-
-    for index, raw in enumerate(matches):
-        try:
-            if isinstance(raw, YaraMatchModel):
-                match = raw
-            elif isinstance(raw, dict):
-                match = YaraMatchModel(**raw)
-            elif hasattr(raw, "to_dict"):
-                match = YaraMatchModel(**raw.to_dict())
-            else:
-                logger.warning(f"[YARA] Unsupported match type at index {index}: {type(raw)}")
-                continue
-
-            result.append(match.model_dump())
-
-        except ValidationError as ve:
-            logger.error(f"[YARA] Match validation failed at index {index}: {ve}")
-        except Exception as e:
-            logger.exception(f"[YARA] Unexpected error at index {index}: {e}")
-
-    return result
-
+    logger.warning("[YARA] `convert_matches()` is deprecated. Use `ensure_yara_models()` + `serialize_yara_models()` instead.")
+    return serialize_yara_models(ensure_yara_models(matches))
 
 class YaraMatchEvaluator:
     """
