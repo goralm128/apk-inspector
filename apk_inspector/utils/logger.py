@@ -93,9 +93,9 @@ def log_verdict_debug(
     
     if not reasons:
         logger.warning(f"[{package_name}] No reasons were logged — possible issue in rule logic.")
-    else:
-        for reason in reasons:
-            logger.info(f"[{package_name}] Reason: {reason}")
+   # else:
+   #     for reason in reasons:
+   #         logger.info(f"[{package_name}] Reason: {reason}")
 
     if events is not None:
         logger.debug(f"[{package_name}] Event count: {len(events)}")

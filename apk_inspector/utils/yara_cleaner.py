@@ -28,9 +28,9 @@ def clean_yara_match(match: Any, enable_logging: bool = True) -> Tuple[List[str]
                     meta[k] = v.decode('utf-8', errors='replace')
                 else:
                     meta[k] = v
-            except Exception as e:
+            except Exception as ex:
                 if enable_logging:
-                    logger.warning(f"[YARA:{rule_name}] Failed to clean meta[{k}]: {e}")
+                    logger.warning(f"[YARA:{rule_name}] Failed to clean meta[{k}]: {ex}")
                 meta[k] = repr(v)
     else:
         if enable_logging:

@@ -33,7 +33,7 @@ def analyze_strings_xml(path: Path) -> List[Dict[str, str]]:
                     "value": value
                 })
 
-    except Exception as e:
-        logger.error(f"[STRINGS XML] Failed to parse {strings_path}: {e}")
+    except Exception as ex:
+        logger.error(f"[STRINGS XML] Failed to parse {strings_path}: {ex}")
 
     return results

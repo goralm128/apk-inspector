@@ -1,8 +1,9 @@
 from pathlib import Path
 from typing import Dict, Any, List
-from apk_inspector.utils.hook_descovery import discover_hooks
+from apk_inspector.analysis.dynamic.hook_descovery import discover_hooks
 from apk_inspector.analysis.dynamic.dynamic_analyzer import DynamicAnalyzer
 from apk_inspector.analysis.static.static_analyzer import StaticAnalyzer
+from apk_inspector.analysis.tag_inferencer import TagInferencer
 from apk_inspector.analysis.yara_scanner import YaraScanner
 from apk_inspector.rules.rule_engine import RuleEngine
 from apk_inspector.reports.report_builder import APKReportBuilder
@@ -12,6 +13,7 @@ from apk_inspector.core.decompiler import decompile_apk
 from apk_inspector.reports.models import Verdict
 from apk_inspector.utils.yara_utils import ensure_yara_models
 from apk_inspector.utils.logger import log_verdict_debug
+
 
 
 class APKInspector:
@@ -63,10 +65,21 @@ class APKInspector:
                 raw_yara_matches = []
             yara_models = ensure_yara_models(raw_yara_matches)
             self.logger.info(f"[{package_name}] {len(yara_models)} validated YARA matches found.")
+            
+            tag_rules = {
+                "network": ["http", "connect", "socket"],
+                "crypto": ["cipher", "encrypt", "decrypt"],
+                "file": ["open", "read", "write", "file"],
+                "native": ["dlopen", "execve", "fork"],
+                # Add more
+            }
+            tag_inferencer = TagInferencer(tag_rules)
 
             dynamic_analyzer = DynamicAnalyzer(
                 hooks_dir=self.hooks_dir,
                 logger=self.logger,
+                rule_engine=self.rule_engine,
+                tag_inferencer=tag_inferencer,
                 timeout=self.timeout
             )
             events = dynamic_analyzer.analyze(package_name)
@@ -89,9 +102,9 @@ class APKInspector:
             final_report = self.report_builder.build()
             return {**base_report, **final_report}
 
-        except Exception as e:
-            self.logger.exception(f"[{package_name}] Fatal error during inspection: {e}")
-            return self._error_result(package_name, base_report, str(e))
+        except Exception as ex:
+            self.logger.exception(f"[{package_name}] Fatal error during inspection: {ex}")
+            return self._error_result(package_name, base_report, str(ex))
 
     def _ensure_decompiled(self, package_name: str):
         decompiled_dir = self.workspace.get_decompile_path(package_name)

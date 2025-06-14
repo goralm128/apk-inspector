@@ -1,34 +1,31 @@
 'use strict';
 
-/**
- * Hook Metadata
- */
 const metadata = {
     name: "hook_dexloader",
-    sensitive: true,
-    tags: ["java", "dex", "loader", "runtime"]
+    category: "dex_loading",
+    description: "Tracks runtime DEX loading",
+    tags: ["java", "dex", "loader"],
+    sensitive: true
 };
 
-Java.perform(function () {
-    const logDex = createHookLogger({
-        hook: "DexClassLoader.$init",
-        category: "reflection", // or "dynamic_loading"
-        tags: metadata.tags,
-        description: "Hooks DexClassLoader constructor",
-        sensitive: metadata.sensitive
-    });
-    /**
-     * Hooks the DexClassLoader constructor to log dex loading events.
-     * This is useful for monitoring dynamic class loading in Android applications.
-     */
-    const DexClassLoader = Java.use("dalvik.system.DexClassLoader");
+runWhenJavaIsReady(() => {
+    waitForLogger(metadata, (log) => {
+        try {
+            const D = Java.use("dalvik.system.DexClassLoader");
+            D.$init.overload("java.lang.String", "java.lang.String", "java.lang.String", "java.lang.ClassLoader").implementation = function (dexPath, optDir, lib, parent) {
+                log({ hook: metadata.name,
+                    action: "dex_load",
+                    dex_path: dexPath,
+                    optimized_directory: optDir,
+                    loader: this.toString()
+                });
+                return this.$init(dexPath, optDir, lib, parent);
+            };
+        } catch (e) {
+            console.error(`[${metadata.name}] Hook failed: ${e}`);
+        }
 
-    DexClassLoader.$init.overload("java.lang.String", "java.lang.String", "java.lang.String", "java.lang.ClassLoader").implementation = function (dexPath, optimizedDir, libSearchPath, parent) {
-        logDex({
-            action: "dex_load",
-            dex_path: dexPath,
-            optimized_directory: optimizedDir
-        });
-        return this.$init(dexPath, optimizedDir, libSearchPath, parent);
-    };
+        send({ type: 'hook_loaded', hook: metadata.name, java: true });
+        console.log(`[+] ${metadata.name} initialized`);
+    });
 });

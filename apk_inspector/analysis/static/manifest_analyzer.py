@@ -67,6 +67,6 @@ def analyze_manifest(manifest_path: Path) -> dict:
             "components": components
         }
 
-    except Exception as e:
-        logger.error(f"[MANIFEST ANALYZER] Failed to analyze manifest at {manifest_path}: {e}")
+    except Exception as ex:
+        logger.error(f"[MANIFEST ANALYZER] Failed to analyze manifest at {manifest_path}: {ex}")
         return {}

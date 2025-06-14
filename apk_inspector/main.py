@@ -51,7 +51,10 @@ def run_analysis():
     logger.info(f"[*] Starting APK analysis in {'parallel' if args.parallel else 'serial'} mode...")
 
     runner = initialize_batch_runner(args, apk_paths, run_dir)
-    runner.run()
+    try:
+        runner.run()
+    except Exception as ex:
+        logger.error(f"[✗] Batch analysis fatal error: {ex}", exc_info=True)    
 
     return 0
 
@@ -59,8 +62,8 @@ def run_analysis():
 def main():
     try:
         sys.exit(run_analysis())
-    except Exception as e:
-        print(f"[ERROR] {type(e).__name__}: {e}", file=sys.stderr)
+    except Exception as ex:
+        print(f"[ERROR] {type(e).__name__}: {ex}", file=sys.stderr)
         sys.exit(1)
 
 

@@ -2,15 +2,15 @@
 # APK Inspector Git Ignore
 # -----------------------------------------------------------------------------
 
-# APK artifacts
+# Android APK files
 apks/**/*.apk
 !apks/.gitkeep
 
-# Output / reports / analysis results
-output/*
+# Output / reports / generated files
+output/
 !output/.gitkeep
 
-# Python bytecode & cache
+# Python cache and compiled bytecode
 __pycache__/
 *.py[cod]
 *.pyo
@@ -21,28 +21,29 @@ __pycache__/
 htmlcov/
 .cache/
 
-# Virtual environments
+# Virtual environments (local only)
 venv/
-.env/
 .venv/
+.env/
+venv310/
 
-# Frida-related logs and temporary files
-*.log
-*.tmp
-
-# Build metadata
+# Build system artifacts
 *.egg-info/
 *.egg
 build/
 dist/
 
-# IDE and tooling
+# Frida logs and temp files
+*.log
+*.tmp
+
+# IDE & editor settings
 .vscode/
 .idea/
 
-# Notebook checkpoints (optional)
+# Jupyter Notebook
 *.ipynb_checkpoints/
 
-# System files
+# OS-specific junk
 .DS_Store
 Thumbs.db

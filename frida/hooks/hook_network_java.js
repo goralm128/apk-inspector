@@ -1,34 +1,27 @@
 'use strict';
 
-/**
- * Hook Metadata
- */
 const metadata = {
     name: "hook_network_java",
-    sensitive: false,
-    tags: ["java", "network"]
+    category: "network",
+    description: "Intercepts Java network activity",
+    tags: ["java", "network"],
+    sensitive: false
 };
 
-Java.perform(function () {
-    const logNetworkJava = createHookLogger({
-        hook: "URL.openConnection",
-        category: "network",
-        tags: metadata.tags,
-        description: "Hooks java.net.URL.openConnection",
-        sensitive: metadata.sensitive
-    });
+runWhenJavaIsReady(() => {
+    waitForLogger(metadata, (log) => {
+        try {
+            const U = Java.use("java.net.URL");
+            U.openConnection.implementation = function () {
+                const conn = this.openConnection();
+                log({ hook: metadata.name, action: "openConnection", url: this.toString() });
+                return conn;
+            };
+        } catch (e) {
+            console.error(`[${metadata.name}] Hook failed: ${e}`);
+        }
 
-    try {
-        const URLClass = Java.use("java.net.URL");
-        URLClass.openConnection.implementation = function () {
-            const conn = this.openConnection();
-            logNetworkJava({
-                action: "openConnection",
-                url: this.toString()
-            });
-            return conn;
-        };
-    } catch (e) {
-        console.error("Failed to hook java.net.URL", e);
-    }
+        send({ type: 'hook_loaded', hook: metadata.name, java: true });
+        console.log(`[+] ${metadata.name} initialized`);
+    });
 });

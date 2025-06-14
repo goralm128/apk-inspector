@@ -1,0 +1,8 @@
+# Include config YAMLs and JSONs
+recursive-include apk_inspector/config *.yaml *.json
+
+# Optional: if you have Frida helper JS
+recursive-include frida/helpers *.js
+
+# Optional: include rules if they’re also non-Python
+recursive-include apk_inspector/rules *.yar *.yaml *.json

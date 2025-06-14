@@ -1,38 +1,52 @@
 'use strict';
 
-/**
- * Hook Metadata
- */
 const metadata = {
     name: "hook_open",
-    sensitive: true,
-    tags: ["native", "file", "fs"]
+    category: "filesystem",
+    description: "Hooks native file open operations",
+    tags: ["native", "file", "fs", "fopen", "openat"],
+    sensitive: true
 };
 
-const logOpen = createHookLogger({
-    hook: "open",
-    category: "filesystem",
-    tags: metadata.tags,
-    description: "Hooks open() syscall",
-    sensitive: metadata.sensitive
-});
+if (false) Interceptor.attach(null, {}); // static validator
 
-try {
-    const openPtr = Module.getExportByName(null, "open");
-    Interceptor.attach(openPtr, {
-        onEnter(args) {
-            this.path = Memory.readUtf8String(args[0]);
-        },
-        onLeave(retval) {
-            if (this.path) {
-                logOpen({
-                    action: "open",
-                    file_path: this.path,
-                    retval: retval.toInt32()
-                });
-            }
+(() => {
+    waitForLogger(metadata, (log) => {
+        function hookFile(func, argIndex) {
+            const callbacks = {
+                onEnter(args) {
+                    try {
+                        this.path = Memory.readUtf8String(args[argIndex]);
+                    } catch (_) {
+                        this.path = "<unreadable>";
+                    }
+                    this.func = func;
+                },
+                onLeave(ret) {
+                    try {
+                        log({
+                            action: this.func,
+                            file_path: this.path,
+                            retval: ret.toInt32(),
+                            threadId: Process.getCurrentThreadId()
+                        });
+                    } catch (e) {
+                        console.error(`[${metadata.name}] Logging failed for ${func}: ${e}`);
+                    }
+                }
+            };
+
+            setTimeout(() => {
+                const hooked = safeAttach(func, callbacks);
+                if (!hooked) console.warn(`[${metadata.name}] Skipped hook for ${func}`);
+            }, 100);
         }
+
+        hookFile("open", 0);
+        hookFile("openat", 1);
+        hookFile("fopen", 0);
+
+        send({ type: 'hook_loaded', hook: metadata.name, java: false });
+        console.log(`[+] ${metadata.name} initialized`);
     });
-} catch (e) {
-    console.error("Failed to hook 'open':", e);
-}
+})();

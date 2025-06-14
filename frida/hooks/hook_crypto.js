@@ -1,30 +1,26 @@
 'use strict';
-/**
- * Hook Metadata
- */
+
 const metadata = {
     name: "hook_cryptor",
-    sensitive: true,
-    tags: ["crypto", "java", "cipher"]
+    category: "crypto_usage",
+    description: "Intercepts crypto-related Java APIs",
+    tags: ["crypto", "java", "cipher"],
+    sensitive: true
 };
 
-// Crypto hooks — Java side
-Java.perform(() => {
-    const logCipher = createHookLogger({
-        hook: "Cipher.getInstance",
-        category: "crypto_usage",
-        tags: metadata.tags,
-        description: "Hooks Cipher.getInstance()",
-        sensitive: metadata.sensitive
+runWhenJavaIsReady(() => {
+    waitForLogger(metadata, (log) => {
+        try {
+            const C = Java.use("javax.crypto.Cipher");
+            C.getInstance.overload("java.lang.String").implementation = function (algo) {
+                log({ hook: metadata.name, action: "getInstance", algorithm: algo });
+                return this.getInstance(algo);
+            };
+        } catch (e) {
+            console.error(`[${metadata.name}] Hook failed: ${e}`);
+        }
+
+        send({ type: 'hook_loaded', hook: metadata.name, java: true });
+        console.log(`[+] ${metadata.name} initialized`);
     });
-
-    const Cipher = Java.use("javax.crypto.Cipher");
-
-    Cipher.getInstance.overload("java.lang.String").implementation = function (algo) {
-        logCipher({
-            action: "getInstance",
-            algorithm: algo
-        });
-        return this.getInstance(algo);
-    };
 });

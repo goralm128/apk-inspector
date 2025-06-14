@@ -3,7 +3,7 @@ import re
 from pathlib import Path
 from typing import Dict, Optional
 
-from apk_inspector.utils.hook_validator import validate_hook_script
+from apk_inspector.analysis.dynamic.hook_validator import validate_hook_script
 
 def extract_metadata_from_hook(script_path: Path) -> Optional[Dict]:
     """
@@ -30,8 +30,8 @@ def extract_metadata_from_hook(script_path: Path) -> Optional[Dict]:
 
         return json.loads(block)
 
-    except Exception as e:
-        print(f"[!] Failed to parse metadata from {script_path.name}: {e}")
+    except Exception as ex:
+        print(f"[!] Failed to parse metadata from {script_path.name}: {ex}")
         return None
 
 

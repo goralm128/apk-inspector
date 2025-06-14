@@ -33,8 +33,8 @@ def load_rules_from_yaml(yaml_path: Path) -> List[Rule]:
                 severity=entry.get("severity", "medium"),
                 disabled=False
             )
-        except Exception as e:
-            logger.warning(f"[!] Rule {rule_id} disabled due to error: {e}")
+        except Exception as ex:
+            logger.warning(f"[!] Rule {rule_id} disabled due to error: {ex}")
             rule = Rule(
                 id=entry.get("id", "UNKNOWN"),
                 description=entry.get("description", "Invalid rule"),

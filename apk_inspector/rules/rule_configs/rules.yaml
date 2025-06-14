@@ -12,7 +12,7 @@
   category: network
   weight: 4
   severity: medium
-  condition: "event.get('address', {}).get('is_private') == False"
+  condition: "event.get('address', {}).get('is_private') is False"
   tags: ["network", "external"]
   cvss: 4.3
 
@@ -39,7 +39,7 @@
   category: c2
   weight: 7
   severity: high
-  condition: "any(domain in event.get('data', '') for domain in ['example.com', 'evil.org', 'malicious.net'])"
+  condition: "event.get('data') and any(domain in str(event['data']) for domain in ['example.com', 'evil.org', 'malicious.net'])"
   tags: ["c2", "dns"]
   cvss: 6.5
 
@@ -48,7 +48,7 @@
   category: accessibility_abuse
   weight: 7
   severity: high
-  condition: "event.get('metadata', {}).get('category') == 'accessibility_abuse'"
+  condition: "event.get('category') == 'accessibility_abuse'"
   tags: ["accessibility", "overlay", "clickjacking"]
   cvss: 7.1
 
@@ -57,7 +57,7 @@
   category: reflection
   weight: 6
   severity: high
-  condition: "event.get('metadata', {}).get('category') == 'reflection'"
+  condition: "event.get('category') == 'reflection'"
   tags: ["reflection", "evasion"]
   cvss: 6.9
 
@@ -66,7 +66,7 @@
   category: dex_loading
   weight: 6
   severity: high
-  condition: "event.get('hook') in {'dlopen', 'Class.forName'}"
+  condition: "'dlopen' in event.get('hook', '') or 'Class.forName' in event.get('hook', '')"
   tags: ["code_injection", "jni", "native"]
   cvss: 7.0
 
@@ -75,6 +75,6 @@
   category: evasion
   weight: 8
   severity: high
-  condition: "event.get('hook') in {'dlopen', 'popen', 'system'} and 'frida' in event.get('args', {}).get('arg0', '')"
+  condition: "event.get('args') and event['args'].get('arg0') and 'frida' in str(event['args']['arg0'])"
   tags: ["frida", "evasion", "hooking"]
   cvss: 7.5

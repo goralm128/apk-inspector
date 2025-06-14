@@ -28,6 +28,6 @@ def analyze_certificate(apk_path: Path) -> dict:
             "raw_output": output if suspicious else None
         }
 
-    except Exception as e:
-        logger.error(f"[CERT ANALYZER] Failed to analyze certificate for {apk_path}: {e}")
+    except Exception as ex:
+        logger.error(f"[CERT ANALYZER] Failed to analyze certificate for {apk_path}: {ex}")
         return {}

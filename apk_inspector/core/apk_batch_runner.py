@@ -62,8 +62,8 @@ class APKBatchRunner:
                     self.report_saver.save_report(full_report)
 
                     results.append((full_report, summary))
-                except Exception as e:
-                    self.logger.error(f"[✗] Analysis failed for {apk_path.name}: {e}")
+                except Exception as ex:
+                    self.logger.error(f"[✗] Analysis failed for {apk_path.name}: {ex}")
                     
             return results        
 

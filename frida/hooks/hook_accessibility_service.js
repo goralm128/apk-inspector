@@ -1,50 +1,44 @@
 'use strict';
 
-/**
- * Hook Metadata
- */
 const metadata = {
     name: "hook_accessibility_service",
-    description: "Detects usage of AccessibilityService and related APIs",
+    category: "accessibility_abuse",
+    description: "Monitors usage of AccessibilityService API",
     tags: ["accessibility", "uiautomation", "abuse"],
     sensitive: true
 };
 
-const logAccessibility = createHookLogger({
-    hook: "AccessibilityService",
-    category: "accessibility_abuse",
-    tags: metadata.tags,
-    description: metadata.description,
-    sensitive: metadata.sensitive
-});
+runWhenJavaIsReady(() => {
+    waitForLogger(metadata, (log) => {
+        try {
+            const A = Java.use("android.accessibilityservice.AccessibilityService");
+            A.onServiceConnected.overload().implementation = function () {
+                try {
+                    log({ hook: metadata.name, action: "onServiceConnected", component: this.getComponentName().toString() });
+                } catch (e) {
+                    console.error(`[${metadata.name}] log() failed: ${e}`);
+                }
+                return this.onServiceConnected();
+            };
+        } catch (e) {
+            console.error(`[${metadata.name}] Hook failed: ${e}`);
+        }
 
-Java.perform(() => {
-    try {
-        const AccService = Java.use("android.accessibilityservice.AccessibilityService");
+        try {
+            const N = Java.use("android.view.accessibility.AccessibilityNodeInfo");
+            N.performAction.overload('int').implementation = function (actionId) {
+                try {
+                    log({ hook: metadata.name, action: "performAction", action_id: actionId, node: this.toString() });
+                } catch (e) {
+                    console.error(`[${metadata.name}] log() failed: ${e}`);
+                }
+                return this.performAction(actionId);
+            };
+        } catch (e) {
+            console.error(`[${metadata.name}] Hook failed: ${e}`);
+        }
 
-        // Detect when service is started
-        AccService.onServiceConnected.implementation = function () {
-            logAccessibility({
-                action: "onServiceConnected",
-                class: this.$className,
-                component: this.getComponentName().toString()
-            });
-            return this.onServiceConnected();
-        };
-
-        const NodeInfo = Java.use("android.view.accessibility.AccessibilityNodeInfo");
-
-        // Dangerous calls
-        NodeInfo.performAction.overload('int').implementation = function (action) {
-            logAccessibility({
-                action: "performAction",
-                node: this.toString(),
-                action_id: action
-            });
-            return this.performAction(action);
-        };
-
-    } catch (e) {
-        console.error("[!] Failed to hook AccessibilityService:", e);
-    }
+        send({ type: 'hook_loaded', hook: metadata.name, java: true });
+        console.log(`[+] ${metadata.name} initialized`);
+    });
 });

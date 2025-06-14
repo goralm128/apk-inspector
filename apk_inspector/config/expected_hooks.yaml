@@ -1,0 +1,12 @@
+# config/expected_hooks.yaml
+expected_hooks:
+  - hook_exec
+  - hook_network
+  - hook_crypto
+  - hook_open
+  - hook_readwrite
+  - hook_socket_io
+  - hook_accessibility_service
+  - hook_dexloader
+  - hook_native_sensitive
+  - hook_network_java

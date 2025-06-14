@@ -1,52 +1,38 @@
 'use strict';
 
-/**
- * Hook Metadata
- */
 const metadata = {
     name: "hook_network",
-    sensitive: true,
-    tags: ["network", "native", "socket"]
+    category: "network",
+    description: "Intercepts native socket APIs",
+    tags: ["network", "native", "socket"],
+    sensitive: true
 };
 
-const logConnect = createHookLogger({
-    hook: "connect",
-    category: "network",
-    tags: metadata.tags,
-    description: "Hooks native connect()",
-    sensitive: metadata.sensitive
-});
+(() => {
+    waitForLogger(metadata, (log) => {
+        function ntohs(n) { return ((n & 0xff) << 8) | ((n >> 8) & 0xff); }
+        function intToIP(v) { return [v & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >> 24) & 0xff].join("."); }
 
-function ntohs(n) {
-    return ((n & 0xff) << 8) | ((n >> 8) & 0xff);
-}
-
-function intToIP(intVal) {
-    return [intVal & 0xff, (intVal >> 8) & 0xff, (intVal >> 16) & 0xff, (intVal >> 24) & 0xff].join(".");
-}
-
-try {
-    const connectPtr = Module.getExportByName(null, "connect");
-    Interceptor.attach(connectPtr, {
-        onEnter(args) {
-            try {
-                const sockaddr = args[1];
-                const family = sockaddr.readU16();
-                const port = ntohs(sockaddr.add(2).readU16());
-                const ipRaw = sockaddr.add(4).readU32();
-                const ip = intToIP(ipRaw);
-
-                logConnect({
-                    action: "connect",
-                    family,
-                    port,
-                    ip
-                });
-            } catch (err) {
-                console.error("connect parsing failed", err);
-            }
+        try {
+            const addr = Module.getExportByName(null, "connect");
+            Interceptor.attach(addr, {
+                onEnter(args) {
+                    try {
+                        const s = args[1];
+                        const family = s.readU16();
+                        const port = ntohs(s.add(2).readU16());
+                        const ip = intToIP(s.add(4).readU32());
+                        log({ hook: metadata.name, action: "connect", family, port, ip });
+                    } catch (e) {
+                        console.error(`[${metadata.name}] parsing failed: ${e}`);
+                    }
+                }
+            });
+        } catch (e) {
+            console.error(`[${metadata.name}] Hook failed: ${e}`);
         }
+
+        send({ type: 'hook_loaded', hook: metadata.name, java: false });
+        console.log(`[+] ${metadata.name} initialized`);
     });
-} catch (e) {
-    console.error("Failed to hook 'connect':", e);
-}
+})();

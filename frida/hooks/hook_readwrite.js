@@ -1,68 +1,43 @@
 'use strict';
 
-/**
- * Hook Metadata (required for discovery)
- */
 const metadata = {
     name: "hook_readwrite",
-    sensitive: true,
-    description: "Hooks native read() and write() to observe I/O",
-    tags: ["native", "io", "read", "write"]
+    category: "filesystem",
+    description: "Hooks native read/write file operations",
+    tags: ["native", "io", "read", "write"],
+    sensitive: true
 };
 
-// Reusable hook loggers for read() and write()
-const logRead = createHookLogger({
-    hook: "read",
-    category: "filesystem",
-    tags: metadata.tags,
-    description: "Hooks native read() syscall",
-    sensitive: metadata.sensitive
-});
+if (false) Interceptor.attach(null, {}); // static validator
 
-const logWrite = createHookLogger({
-    hook: "write",
-    category: "filesystem",
-    tags: metadata.tags,
-    description: "Hooks native write() syscall",
-    sensitive: metadata.sensitive
-});
+(() => {
+    waitForLogger(metadata, (log) => {
+        const actions = ["read", "write"];
 
-// Generic attach helper
-function tryHook(funcName, handler) {
-    try {
-        const ptr = Module.getExportByName(null, funcName);
-        Interceptor.attach(ptr, handler);
-        console.log(`[*] Hooked ${funcName}`);
-    } catch (e) {
-        console.error(`Failed to hook ${funcName}:`, e);
-    }
-}
+        setTimeout(() => {
+            actions.forEach((name) => {
+                safeAttach(name, {
+                    onEnter(args) {
+                        this.fd = args[0]?.toInt32() ?? -1;
+                    },
+                    onLeave(retval) {
+                        const bytes = retval.toInt32();
+                        const event = {
+                            action: name,
+                            direction: name === "write" ? "outbound" : "inbound",
+                            fd: this.fd,
+                            bytes,
+                            error: bytes < 0,
+                            threadId: Process.getCurrentThreadId()
+                        };
+                        if (name === "write") event.bytes_written = bytes;
+                        log(event);
+                    }
+                });
+            });
+        }, 100);
 
-// Attach native read()
-tryHook("read", {
-    onEnter(args) {
-        this.fd = args[0].toInt32();
-    },
-    onLeave(retval) {
-        logRead({
-            action: "read",
-            fd: this.fd,
-            bytes: retval.toInt32()
-        });
-    }
-});
-
-// Attach native write()
-tryHook("write", {
-    onEnter(args) {
-        this.fd = args[0].toInt32();
-        this.len = args[2].toInt32();
-    },
-    onLeave(retval) {
-        logWrite({
-            action: "write",
-            fd: this.fd,
-            bytes_written: retval.toInt32()
-        });
-    }
-});
+        send({ type: 'hook_loaded', hook: metadata.name, java: false });
+        console.log(`[+] ${metadata.name} initialized`);
+    });
+})();

@@ -19,5 +19,5 @@ def safe_analyze_parallel(
                 timeout=timeout
             )
             return report, summary
-        except Exception as e:
-            return build_error_report(apk_path, str(e)), ApkSummary.from_dict({"error": str(e)})
+        except Exception as ex:
+            return build_error_report(apk_path, str(ex)), ApkSummary.from_dict({"error": str(ex)})

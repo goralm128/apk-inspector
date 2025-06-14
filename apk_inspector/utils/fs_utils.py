@@ -12,8 +12,8 @@ def ensure_dirs_exist(dirs: Iterable[Path]) -> None:
     for directory in dirs:
         try:
             directory.mkdir(parents=True, exist_ok=True)
-        except Exception as e:
-            raise RuntimeError(f"Failed to create directory '{directory}': {e}")
+        except Exception as ex:
+            raise RuntimeError(f"Failed to create directory '{directory}': {ex}")
 
 def extract_file_path(event: Dict[str, Any]) -> Optional[str]:
     return event.get("path") or event.get("file") or event.get("filename")

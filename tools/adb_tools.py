@@ -80,8 +80,8 @@ def wake_and_unlock():
         subprocess.run(["adb", "shell", "input", "keyevent", "KEYCODE_MENU"], check=True)
         subprocess.run(["adb", "shell", "wm", "dismiss-keyguard"], check=True)
         print("[✓] Device wake/unlock sequence completed.")
-    except Exception as e:
-        logger.error(f"[ADB] Failed to wake/unlock device: {e}")
+    except Exception as ex:
+        logger.error(f"[ADB] Failed to wake/unlock device: {ex}")
      
 def launch_app_direct(package: str, activity: str, logger, timeout=10) -> bool:
     logger.info(f"[ADB] Trying to start {package}/{activity}")
@@ -108,8 +108,8 @@ def force_stop_app(package_name):
     try:
         subprocess.run(["adb", "shell", "am", "force-stop", package_name],
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=True)
-    except Exception as e:
-        logger.error(f"[ADB] Failed to stop app {package_name}: {e}")
+    except Exception as ex:
+        logger.error(f"[ADB] Failed to stop app {package_name}: {ex}")
 
 
 def install_apks(apk_dir: Path):
@@ -139,8 +139,8 @@ def install_apks(apk_dir: Path):
 
         except subprocess.CalledProcessError as e:
             logger.error(f"[ADB] Error installing {apk_path.name}: {e}")
-        except Exception as e:
-            logger.error(f"[ADB] Unexpected error with {apk_path.name}: {e}")
+        except Exception as ex:
+            logger.error(f"[ADB] Unexpected error with {apk_path.name}: {ex}")
           
     return packages
 

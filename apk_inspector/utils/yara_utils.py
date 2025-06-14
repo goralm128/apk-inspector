@@ -40,8 +40,8 @@ def ensure_yara_models(matches: List[Any]) -> List[YaraMatchModel]:
                 logger.warning(f"[YARA] Unsupported match type at index {index}: {type(raw)}")
         except ValidationError as ve:
             logger.error(f"[YARA] Validation failed at index {index}: {ve}")
-        except Exception as e:
-            logger.exception(f"[YARA] Unexpected error at index {index}: {e}")
+        except Exception as ex:
+            logger.exception(f"[YARA] Unexpected error at index {index}: {ex}")
     return result
 
 def serialize_yara_models(models: List[YaraMatchModel]) -> List[Dict[str, Any]]:
@@ -82,10 +82,10 @@ def clean_yara_match(match: Any, enable_logging: bool = True) -> Tuple[List[str]
         for k, v in raw_meta.items():
             try:
                 meta[k] = v.decode("utf-8", errors="replace") if isinstance(v, bytes) else v
-            except Exception as e:
+            except Exception as ex:
                 meta[k] = repr(v)
                 if enable_logging:
-                    logger.warning(f"[YARA:{rule_name}] Failed to clean meta[{k}]: {e}")
+                    logger.warning(f"[YARA:{rule_name}] Failed to clean meta[{k}]: {ex}")
     else:
         if enable_logging:
             logger.warning(f"[YARA:{rule_name}] Unexpected meta format: {type(raw_meta)}")
@@ -125,8 +125,8 @@ def serialize_yara_strings(strings: List[Any]) -> List[Dict[str, Any]]:
                 "identifier": identifier,
                 "data": data_str
             })
-        except Exception as e:
-            logger.warning(f"[YARA] Failed to serialize YARA string: {e}")
+        except Exception as ex:
+            logger.warning(f"[YARA] Failed to serialize YARA string: {ex}")
     return serialized
 
 
@@ -171,9 +171,9 @@ class YaraMatchEvaluator:
             except ValidationError as ve:
                 reasons.append(f"[ERROR] Invalid YARA match #{index}: {ve}")
                 logger.error(f"[YARA] Validation failed at index {index}: {ve}")
-            except Exception as e:
-                reasons.append(f"[ERROR] Unexpected error in hit #{index}: {e}")
-                logger.exception(f"[YARA] Unexpected error parsing hit #{index}: {e}")
+            except Exception as ex:
+                reasons.append(f"[ERROR] Unexpected error in hit #{index}: {ex}")
+                logger.exception(f"[YARA] Unexpected error parsing hit #{index}: {ex}")
 
         logger.debug(f"[YARA] Successfully validated {len(validated_hits)} YARA hits")
 
@@ -247,9 +247,9 @@ class YaraMatchEvaluator:
 
                 logger.debug(f"[YARA:{rule_id}] Final rule score: {rule_score}")
 
-            except Exception as e:
-                logger.exception(f"[YARA] Failed processing validated hit #{index}: {e}")
-                reasons.append(f"[ERROR] Failed to evaluate YARA hit #{index}: {e}")
+            except Exception as ex:
+                logger.exception(f"[YARA] Failed processing validated hit #{index}: {ex}")
+                reasons.append(f"[ERROR] Failed to evaluate YARA hit #{index}: {ex}")
 
         logger.info(f"[YARA] Evaluation complete: total_score={total_score}, hits={len(validated_hits)}")
         return total_score, reasons

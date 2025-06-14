@@ -1,53 +1,40 @@
 'use strict';
 
-/**
- * Hook Metadata
- */
 const metadata = {
     name: "hook_native_sensitive",
-    sensitive: true,
-    tags: ["native", "exec", "fork", "process"]
+    category: "native_injection",
+    description: "Hooks sensitive native APIs like fork, exec",
+    tags: ["native", "exec", "fork", "process"],
+    sensitive: true
 };
 
-(function () {
-    const functions = [
-        { name: "system", args: [0] },
-        { name: "execve", args: [0, 1] },
-        { name: "dlopen", args: [0] },
-        { name: "popen", args: [0] },
-        { name: "fork", args: [] },
-        { name: "CreateProcessW", args: [0, 1] },
-        { name: "CreateProcessA", args: [0, 1] }
-    ];
+(() => {
+    waitForLogger(metadata, (log) => {
+        const fns = [
+            "system", "execve", "dlopen", "popen", "fork",
+            "CreateProcessW", "CreateProcessA"
+        ].map(name => ({ name, args: [0, 1] }));
 
-    const logNative = createHookLogger({
-        hook: "native_sensitive_fn",
-        category: "native_injection",
-        tags: metadata.tags,
-        description: "Hooks sensitive native functions",
-        sensitive: metadata.sensitive
-    });
+        for (const fn of fns) {
+            const addr = Module.findExportByName(null, fn.name);
+            if (!addr) continue;
 
-    function safeReadCString(ptr) {
-        try { return ptr.readCString(); } catch (_) { return "<unreadable>"; }
-    }
-
-    for (const fn of functions) {
-        const addr = Module.findExportByName(null, fn.name);
-        if (!addr) continue;
-
-        Interceptor.attach(addr, {
-            onEnter: function (args) {
-                const out = {};
-                for (let i = 0; i < fn.args.length; i++) {
-                    out[`arg${fn.args[i]}`] = safeReadCString(args[fn.args[i]]);
+            Interceptor.attach(addr, {
+                onEnter(args) {
+                    const out = {};
+                    for (const i of fn.args) {
+                        try {
+                            out[`arg${i}`] = args[i].readCString();
+                        } catch (_) {
+                            out[`arg${i}`] = "<unreadable>";
+                        }
+                    }
+                    log({ hook: metadata.name, action: fn.name, args: out });
                 }
+            });
+        }
 
-                logNative({
-                    action: fn.name,
-                    args: out
-                });
-            }
-        });
-    }
+        send({ type: 'hook_loaded', hook: metadata.name, java: false });
+        console.log(`[+] ${metadata.name} initialized`);
+    });
 })();

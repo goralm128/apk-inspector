@@ -68,10 +68,11 @@ class ApkSummaryBuilder:
                 yara_match_count=yara_match_count,
                 top_triggered_rules=top_triggered,
                 cvss_risk_band=cvss_band,
+                risk_breakdown=self.report.get("risk_breakdown", {}),
                 error=""
             )
             
-        except Exception as e:
+        except Exception as ex:
             self.logger.exception(f"[✗] Failed to build summary for {meta.get('package_name', 'unknown')}")
             return ApkSummary(
                 apk_name=meta.get("apk_name", "unknown.apk"),
@@ -79,7 +80,7 @@ class ApkSummaryBuilder:
                 sha256=meta.get("hash", {}).get("sha256", "N/A"),
                 classification="error",
                 risk_score=0,
-                error=f"Summary build failed: {str(e)}"
+                error=f"Summary build failed: {str(ex)}"
             )
 
     @staticmethod

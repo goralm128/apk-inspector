@@ -1,15 +1,16 @@
 ---
 category_score:
+  # Dynamic Behavior Categories
   crypto_usage: 10
+  reflection: 10
   dex_loading: 15
   native_injection: 20
-  network_exfiltration: 25
-  malicious_behavior: 30
-  sensitive_string: 10
-  system_behavior: 15
   overlay_abuse: 15
   accessibility_abuse: 15
-  reflection: 10
+  network_exfiltration: 25
+  malicious_behavior: 30
+  system_behavior: 15
+  sensitive_string: 10
 tag_score:
   # UI/Permission Abuse
   overlay: 10
@@ -30,21 +31,21 @@ tag_score:
   automation: 15
   obfuscation: 10
   entropy: 10
-  weak_crypto: 15  # newly added
-  # Privilege Abuse / Root Bypass
+  weak_crypto: 15
+  crypto_usage: 10
+  # Privilege Abuse
   su: 15
   root: 15
-  # Exfiltration & Network
+  # Network / Exfil
   c2: 20
   http: 10
   dns: 10
   dropzone: 10
   upload: 10
   exfiltration: 20
-  ip_address: 10  # newly added
-  # Crypto & Sensitive Data
+  ip_address: 10
+  # Crypto / Sensitive Data
   crypto: 10
-  crypto_usage: 10  # newly added
   base64: 5
   short_key: 15
   weak_key: 15
@@ -54,7 +55,7 @@ tag_score:
   auth: 10
   jwt: 10
   key: 10
-  # Evasion / Other
+  # Other
   evasion: 10
   xor: 10
   keylogger: 20
@@ -69,4 +70,3 @@ path_type_score:
   config: 10
   app_storage: 5
   general: 0
-

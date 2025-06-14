@@ -65,9 +65,9 @@ def analyze_apk_and_summarize(
         summary = ApkSummaryBuilder(report).build_summary()
         return report, summary
 
-    except Exception as e:
+    except Exception as ex:
         logger.exception(f"[✗] Unexpected failure analyzing {apk_path.name}")
-        return _error_report(apk_path, str(e)), ApkSummary.from_dict({"error": str(e)})
+        return _error_report(apk_path, str(ex)), ApkSummary.from_dict({"error": str(e)})
 
 
 def _error_report(apk_path: Path, error_msg: str = "Unknown error") -> Dict[str, Any]:

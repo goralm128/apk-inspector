@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field, asdict
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from uuid import uuid4
 from datetime import datetime
 from apk_inspector.reports.schemas import YaraMatchModel
@@ -34,7 +34,18 @@ class HookResult:
     reasons: List[str]
     yara_matches: List[YaraMatchModel]
     static_analysis: Dict[str, Any]   
-
+    
+@dataclass
+class TriggeredRuleResult:
+    rule_id: str
+    severity: str
+    cvss: float
+    weight: int
+    bonus: int
+    classification: str
+    description: str
+    tags: List[str]
+    event_id: Optional[str] = None
 
 @dataclass
 class Verdict:
@@ -45,6 +56,10 @@ class Verdict:
     high_risk_event_count: int = 0
     network_activity_detected: bool = False
     cvss_risk_band: str = "Unknown"
+    static_score: int = 0
+    dynamic_score: int = 0
+    yara_score: int = 0
+    triggered_rule_results: List[TriggeredRuleResult] = field(default_factory=list)
     
 @dataclass
 class ApkSummary:
@@ -61,6 +76,7 @@ class ApkSummary:
     yara_match_count: int = 0
     top_triggered_rules: List[str] = field(default_factory=list)
     cvss_risk_band: str = "Unknown"
+    risk_breakdown: Dict[str, int] = field(default_factory=dict)
     error: str = ""
 
     @staticmethod

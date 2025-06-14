@@ -39,10 +39,10 @@ def safe_read_file(file_path: Path) -> str:
 
     except FileNotFoundError:
         logger.warning(f"[STRING EXTRACTOR] File not found: {file_path}")
-    except OSError as e:
-        logger.error(f"[STRING EXTRACTOR] OS error reading {file_path}: {e}")
-    except Exception as e:
-        logger.error(f"[STRING EXTRACTOR] Unexpected error reading {file_path}: {e}")
+    except OSError as error:
+        logger.error(f"[STRING EXTRACTOR] OS error reading {file_path}: {error}")
+    except Exception as ex:
+        logger.error(f"[STRING EXTRACTOR] Unexpected error reading {file_path}: {ex}")
 
     return ""  # Fallback if file can't be read
 

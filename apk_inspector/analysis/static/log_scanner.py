@@ -54,8 +54,8 @@ def scan_logs_for_secrets(decompiled_dir: Path) -> list:
                                 "hint": hint
                             })
 
-        except Exception as e:
-            logger.warning(f"[logscan] Error scanning file {file}: {e}")
+        except Exception as ex:
+            logger.warning(f"[logscan] Error scanning file {file}: {ex}")
 
     logger.info(f"[logscan] Found {len(results)} potential log leaks.")
     return results

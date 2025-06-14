@@ -1,7 +1,8 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 from pathlib import Path
-from typing import List, Dict, Optional
+from typing import List, Dict
+from apk_inspector.reports.models import ApkSummary
 
 from apk_inspector.utils.logger import get_logger
 
@@ -69,3 +70,31 @@ def generate_stacked_chart(
 
     if logger:
         logger.info(f" Saved stacked chart: {title} → {output_path.resolve()}")
+        
+        
+def generate_risk_breakdown_charts(summaries: List[ApkSummary], run_dir: Path) -> List[Path]:
+    output_paths: List[Path] = []
+
+    for summary in summaries:
+        breakdown: Dict[str, int] = summary.risk_breakdown if hasattr(summary, "risk_breakdown") else {}
+        if not breakdown:
+            continue
+
+        labels = list(breakdown.keys())
+        scores = list(breakdown.values())
+
+        fig, ax = plt.subplots(figsize=(6, 4))
+        ax.barh(labels, scores, color="#2a9d8f")
+        ax.set_xlabel("Score")
+        ax.set_title(f"Risk Breakdown: {summary.apk_name}")
+        ax.set_xlim(0, 100)
+        ax.grid(axis="x", linestyle="--", alpha=0.6)
+
+        output_path = run_dir / f"risk_breakdown_{summary.apk_package.replace('.', '_')}.png"
+        fig.tight_layout()
+        fig.savefig(output_path)
+        plt.close(fig)
+
+        output_paths.append(output_path)
+
+    return output_paths

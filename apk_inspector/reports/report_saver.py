@@ -2,9 +2,23 @@ from datetime import datetime
 import json
 from pathlib import Path
 from typing import List, Dict, Optional, Any
+from collections import defaultdict
 import pandas as pd
 from apk_inspector.reports.schemas import YaraMatchModel
 from apk_inspector.utils.logger import get_logger
+
+
+def make_json_safe(obj: Any) -> Any:
+    if isinstance(obj, dict):
+        return {k: make_json_safe(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [make_json_safe(v) for v in obj]
+    elif isinstance(obj, datetime):
+        return obj.isoformat()
+    elif isinstance(obj, Path):
+        return str(obj)
+    else:
+        return obj
 
 
 class ReportSaver:
@@ -26,18 +40,14 @@ class ReportSaver:
 
     def _save_json(self, path: Path, data: Any, label: str) -> bool:
         try:
-            # Validate before saving
-            json_str = json.dumps(data, indent=2, ensure_ascii=False)  # triggers serialization issues
-            json.loads(json_str)
-            
+            safe_data = make_json_safe(data)
             with path.open("w", encoding="utf-8") as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-                
-            self.logger.info(f"{label} written to {path.resolve()}")
+                json.dump(safe_data, f, indent=2, ensure_ascii=False)
+            self.logger.info(f"[✓] {label} written to {path.resolve()}")
             return True
-        
-        except Exception as e:
-            self.logger.error(f"Failed to write {label}: {e}")
+
+        except Exception as ex:
+            self.logger.error(f"[✗] Failed to write {label}: {ex}")
             try:
                 if isinstance(data, list):
                     for idx, item in enumerate(data):
@@ -47,7 +57,6 @@ class ReportSaver:
                     self.logger.debug(f"[Debug] Top-level data type: {type(data)}")
             except Exception as dbg:
                 self.logger.debug(f"[Debug] Type inspection failed: {dbg}")
-                    
             return False
 
     def save_report(self, report: Dict[str, Any]) -> Path:
@@ -60,10 +69,6 @@ class ReportSaver:
             self.logger.info(f"[~] No YARA matches to save for {package_name}.")
             return None
 
-        from collections import defaultdict
-        import pandas as pd
-
-        # Group by (rule, category, file)
         grouped = defaultdict(lambda: {
             "package": package_name,
             "rule": "",
@@ -78,7 +83,6 @@ class ReportSaver:
         for match in matches:
             key = (match.rule, match.meta.get("category", "uncategorized"), match.file)
             group = grouped[key]
-
             group["rule"] = match.rule
             group["category"] = match.meta.get("category", "uncategorized")
             group["severity"] = match.meta.get("severity", "medium")
@@ -87,16 +91,15 @@ class ReportSaver:
             group["file"] = match.file
             group["match_count"] += 1
 
-        rows = list(grouped.values())
-        df = pd.DataFrame(rows)
-
+        df = pd.DataFrame(list(grouped.values()))
         csv_path = self.run_dir / f"{package_name}_yara_summary.csv"
+
         try:
             df.to_csv(csv_path, index=False)
             self.logger.info(f"[✓] Saved enriched YARA summary CSV to: {csv_path.resolve()}")
             return csv_path
-        except Exception as e:
-            self.logger.error(f"[✗] Failed to save enriched YARA summary CSV: {e}")
+        except Exception as ex:
+            self.logger.error(f"[✗] Failed to save enriched YARA summary CSV: {ex}")
             return None
 
     def save_yara_summary_json(self, results: List[Dict[str, Any]]):
@@ -113,8 +116,8 @@ class ReportSaver:
             try:
                 with file_path.open("r", encoding="utf-8") as f:
                     return json.load(f)
-            except Exception as e:
-                self.logger.warning(f"[!] Failed to read existing results from {file_path}: {e}")
+            except Exception as ex:
+                self.logger.warning(f"[!] Failed to read existing results from {file_path}: {ex}")
         return []
 
     def write_merged_results(self, file_path: Path, new_results: List[Dict[str, Any]]) -> None:
@@ -130,5 +133,5 @@ class ReportSaver:
             try:
                 file_path.unlink()
                 self.logger.info(f"[~] Cleared existing results file: {file_path}")
-            except Exception as e:
-                self.logger.warning(f"[!] Unable to delete output file: {e}")
+            except Exception as ex:
+                self.logger.warning(f"[!] Unable to delete output file: {ex}")

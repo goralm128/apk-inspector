@@ -55,9 +55,9 @@ class APKManager:
                     for part in line.split():
                         if part.startswith("name="):
                             return part.split("=")[1].strip("'")
-        except Exception as e:
+        except Exception as ex:
             if self.logger:
-                self.logger.warning(f"[WARN] aapt failed: {e}")
+                self.logger.warning(f"[WARN] aapt failed: {ex}")
         return None
 
     def extract_package_name_androguard(self, apk_path: Path) -> Optional[str]:
@@ -66,9 +66,9 @@ class APKManager:
         try:
             apk = APK(str(apk_path))
             return apk.get_package()
-        except Exception as e:
+        except Exception as ex:
             if self.logger:
-                self.logger.warning(f"[WARN] Androguard failed for {apk_path.name}: {e}")
+                self.logger.warning(f"[WARN] Androguard failed for {apk_path.name}: {ex}")
         return None
 
     def uninstall_package(self, package_name: str):

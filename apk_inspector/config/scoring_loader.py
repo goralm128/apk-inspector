@@ -42,6 +42,6 @@ def load_scoring_profile(path: Path) -> Tuple[
         logger.info(f"[ScoringLoader] Scoring profile loaded from {path}")
         return category_score, tag_score, severity_score, path_type_score
 
-    except Exception as e:
-        logger.error(f"[ScoringLoader] Failed to load or validate scoring profile: {e}")
+    except Exception as ex:
+        logger.error(f"[ScoringLoader] Failed to load or validate scoring profile: {ex}")
         raise
