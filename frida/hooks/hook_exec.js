@@ -8,35 +8,50 @@ const metadata = {
     sensitive: true
 };
 
-if (false) Interceptor.attach(null, {}); // static validator
+function tryReadCString(ptr) {
+    try {
+        return ptr.readCString();
+    } catch (_) {
+        return "<unreadable>";
+    }
+}
 
-(() => {
-    waitForLogger(metadata, (log) => {
+(async () => {
+    try {
+        const log = await waitForLogger(metadata);
+
         const functions = [
-            { name: "execve", args: [0, 1] },
-            { name: "system", args: [0] },
-            { name: "popen", args: [0] }
+            { name: "execve", args: [0, 1], module: "libc.so" },
+            { name: "system", args: [0], module: "libc.so" },
+            { name: "popen", args: [0], module: "libc.so" }
         ];
 
-        setTimeout(() => {
-            functions.forEach(fn => {
-                safeAttach(fn.name, {
+        for (const fn of functions) {
+            try {
+                await safeAttach(fn.name, {
                     onEnter(args) {
                         const out = {};
-                        fn.args.forEach(i => {
-                            try {
-                                out[`arg${i}`] = args[i].readCString();
-                            } catch (_) {
-                                out[`arg${i}`] = "<unreadable>";
-                            }
+                        for (const i of fn.args) {
+                            out[`arg${i}`] = tryReadCString(args[i]);
+                        }
+                        log({
+                            action: fn.name,
+                            args: out,
+                            thread: get_thread_name(),
+                            stack: get_java_stack()
                         });
-                        log({ action: fn.name, args: out });
                     }
-                });
-            });
-        }, 100);
+                }, fn.module);
+                console.log(`[hook_exec] Attached to ${fn.name}`);
+            } catch (hookError) {
+                console.error(`[hook_exec] Failed to hook ${fn.name}: ${hookError}`);
+            }
+        }
 
         send({ type: 'hook_loaded', hook: metadata.name, java: false });
         console.log(`[+] ${metadata.name} initialized`);
-    });
+
+    } catch (e) {
+        console.error(`[${metadata.name}] Initialization failed: ${e}`);
+    }
 })();

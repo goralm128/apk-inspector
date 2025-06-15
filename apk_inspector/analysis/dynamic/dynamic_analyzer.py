@@ -13,9 +13,19 @@ from collections import Counter
 from uuid import uuid4
 
 class DynamicAnalyzer:
-    def __init__(self, hooks_dir: Path, logger, rule_engine: RuleEngine, tag_inferencer: TagInferencer, timeout=60, grace_period=5):
+    def __init__(
+        self,
+        hooks_dir: Path,
+        logger,
+        rule_engine: RuleEngine,
+        tag_inferencer: TagInferencer,
+        run_dir: Path,
+        timeout: int = 60,
+        grace_period: int = 5
+    ):
         self.hooks_dir = hooks_dir
         self.logger = logger
+        self.run_dir = run_dir
         self.timeout = timeout
         self.grace_period = grace_period
         self.helpers_path = Path("frida/helpers/frida_helpers.js")
@@ -32,92 +42,82 @@ class DynamicAnalyzer:
                 if metadata and metadata.get("name"):
                     metadata_map[metadata["name"]] = metadata
             except Exception as ex:
-                self.logger.warning(f"[!] Failed to load metadata from {path.name}: {ex}")
+                self.logger.warning(f"[HOOK METADATA] Failed to load from {path.name}: {ex}")
         return metadata_map
 
     def _process_event(self, event: Dict[str, Any]) -> Dict[str, Any]:
-        # Enforce dict
         if not isinstance(event, dict):
             try:
-                event = event.model_dump()  # or asdict(event)
+                event = event.model_dump()
             except Exception:
-                self.logger.warning("[!] Non-dict event; skipping")
+                self.logger.warning("[EVENT] Invalid format; skipped")
                 return {}
 
-        # Ensure event_id
         event.setdefault("event_id", str(uuid4()))
         event["source_hook"] = event.get("hook", "unknown")
 
         meta = self.hook_metadata_map.get(event["source_hook"], {})
         event["category"] = meta.get("category", "uncategorized")
         if event["category"] == "uncategorized":
-            self.logger.warning(f"[!] Uncategorized hook: {event['source_hook']}")
+            self.logger.warning(f"[HOOK] Uncategorized: {event['source_hook']}")
 
-        # Tag inference
-        tags = event.get("tags", [])
-        inferred = self.tag_inferencer.infer_tags(event)
-        event["tags"] = list(set(tags + inferred))
+        event["tags"] = list(set(event.get("tags", []) + self.tag_inferencer.infer_tags(event)))
 
-        # Path classification
-        fp = extract_file_path(event)
-        if fp:
+        if (fp := extract_file_path(event)):
             event["path_type"] = classify_path(fp)
 
-        # Score/event-level
         score, label, justification = self.rule_engine._score_event(event)
         event.update({"score": score, "label": label, "justification": justification})
 
-        self.logger.debug(f"[EVENT] {event['event_id']} after processing: {json.dumps(event, indent=2)}")
+        self.logger.debug(f"[EVENT] {event['event_id']}:\n{json.dumps(event, indent=2)}")
         return event
 
     def analyze(self, package_name: str) -> Dict[str, Any]:
-        self.logger.info(f"[{package_name}] Starting dynamic analysis")
+        self.logger.info(f"[{package_name}] ▶ Starting dynamic analysis...")
+
         try:
-            session = FridaSessionManager(package_name, self.hooks_dir, self.helpers_path, self.logger, self.timeout, self.grace_period)
-            self.logger.info(f"[{package_name}] FridaSessionManager created")
-            result = session.run()
-            if isinstance(result, dict):
-                keys = list(result.keys())
-                summary = f"dict with keys: {keys}"
-            elif isinstance(result, list):
-                summary = f"list with {len(result)} item(s)"
-            else:
-                summary = f"type: {type(result).__name__}"
+            session_mgr = FridaSessionManager(
+                package_name=package_name,
+                hooks_dir=self.hooks_dir,
+                helpers_path=self.helpers_path,
+                run_dir=self.run_dir,
+                logger=self.logger,
+                timeout=self.timeout,
+                grace_period=self.grace_period
+            )
+            self.logger.info(f"[{package_name}] Session manager initialized.")
 
-            self.logger.info(f"[{package_name}] FridaSessionManager session - run launched, result summary: {summary}")
+            result = session_mgr.run()
+            raw_events = result.get("events", []) if isinstance(result, dict) else []
 
-            raw_events = result["events"] if isinstance(result, dict) and "events" in result else result if isinstance(result, list) else []
-            self.logger.info(f"[{package_name}] Raw events: {json.dumps(raw_events, indent=2)[:500]}")
-        
-            processed = []
-            for raw_evt in raw_events:
-                evt = self._process_event(raw_evt)
-                if evt:
-                    processed.append(evt)
-            self.logger.info(f"[{package_name}] Processed {len(processed)}/{len(raw_events)} events")
+            self.logger.info(f"[{package_name}] Raw events count: {len(raw_events)}")
+            processed = [self._process_event(e) for e in raw_events if e]
+            self.logger.info(f"[{package_name}] Processed events: {len(processed)}")
 
             filtered = [
-                event for event in processed
-                if not (event.get("address", {}).get("ip") and is_private_ip(event["address"]["ip"]))
+                evt for evt in processed
+                if not (evt.get("address", {}).get("ip") and is_private_ip(evt["address"]["ip"]))
             ]
-
-            self.logger.info(f"[{package_name}] Filtered local IP events => {len(filtered)} remain")
+            self.logger.info(f"[{package_name}] After filtering private IPs: {len(filtered)}")
 
             deduped = deduplicate_events(filtered)
-            self.logger.info(f"[{package_name}] Deduplicated events => {len(deduped)} final")
+            self.logger.info(f"[{package_name}] Deduplicated events: {len(deduped)}")
 
             self.hook_coverage = Counter(e.get("hook", "unknown") for e in deduped)
             for evt in deduped[:15]:
-                self.logger.info(f"[EVENT] {evt['event_id']}: {json.dumps(evt, indent=2)}")
+                self.logger.info(f"[EVENT] {evt['event_id']}:\n{json.dumps(evt, indent=2)}")
             self.logger.info(f"[{package_name}] Hook coverage: {dict(self.hook_coverage)}")
 
-            return {"events": deduped, "hook_coverage": dict(self.hook_coverage)}
+            return {
+                "events": deduped,
+                "hook_coverage": dict(self.hook_coverage)
+            }
 
         except Exception as ex:
-            self.logger.exception(f"[{package_name}] Dynamic analysis failed: {ex}")
+            self.logger.exception(f"[{package_name}] ❌ Dynamic analysis failed: {ex}")
             return {"events": [], "hook_coverage": {}}
 
         finally:
             if is_device_connected():
-                self.logger.info(f"[{package_name}] Stopping app")
+                self.logger.info(f"[{package_name}] ⏹ Stopping app...")
                 force_stop_app(package_name)

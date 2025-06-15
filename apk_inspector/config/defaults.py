@@ -11,6 +11,8 @@ CONFIG_RULES_DIR = RULES_DIR / "rule_configs"             # → apk_inspector/ru
 DEFAULT_RULES_PATH = CONFIG_RULES_DIR / "rules.yaml"      # → apk_inspector/rules/rule_configs/rules.yaml
 DEFAULT_SCORING_PROFILE_PATH = CONFIG_DIR / "scoring_profile.yaml"
 DEFAULT_REPORT_DIR = ROOT_DIR / "reports"                 # Update if reports are stored elsewhere
+DEFAULT_APK_DIR = ROOT_DIR / "apks"
+
 
 # ─── Dynamic Analysis Summary Defaults ──────────────────────
 DEFAULT_DYNAMIC_SUMMARY = {
@@ -23,3 +25,6 @@ DEFAULT_DYNAMIC_SUMMARY = {
     "native_code_usage": 0,
     "accessibility_service_usage": 0
 }
+
+def get_apk_path(package_name: str) -> Path:
+    return DEFAULT_APK_DIR / f"{package_name}.apk"

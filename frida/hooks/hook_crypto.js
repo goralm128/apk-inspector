@@ -8,19 +8,20 @@ const metadata = {
     sensitive: true
 };
 
-runWhenJavaIsReady(() => {
-    waitForLogger(metadata, (log) => {
-        try {
-            const C = Java.use("javax.crypto.Cipher");
-            C.getInstance.overload("java.lang.String").implementation = function (algo) {
-                log({ hook: metadata.name, action: "getInstance", algorithm: algo });
-                return this.getInstance(algo);
-            };
-        } catch (e) {
-            console.error(`[${metadata.name}] Hook failed: ${e}`);
-        }
+runWhenJavaIsReady(async () => {
+    try {
+        const log = await waitForLogger(metadata);
+        const C = Java.use("javax.crypto.Cipher");
+        const getInstanceStr = C.getInstance.overload("java.lang.String");
+
+        getInstanceStr.implementation = function (algo) {
+            log({ action: "getInstance", algorithm: algo });
+            return getInstanceStr.call(this, algo);
+        };
 
         send({ type: 'hook_loaded', hook: metadata.name, java: true });
         console.log(`[+] ${metadata.name} initialized`);
-    });
+    } catch (e) {
+        console.error(`[${metadata.name}] Initialization failed: ${e}`);
+    }
 });

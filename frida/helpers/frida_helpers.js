@@ -13,27 +13,27 @@
     }
 
     // Helper: Wait for logger to be ready
-    if (typeof globalThis.waitForLogger !== 'function') {
-        globalThis.waitForLogger = function (metadata, callback, retries = 20, interval = 100) {
-            let attempts = 0;
-            const wait = () => {
-                try {
-                    if (typeof createHookLogger === 'function') {
-                        const log = createHookLogger(metadata);
-                        console.log(`[waitForLogger] Ready for: ${metadata.name}`);
-                        callback(log);
-                    } else if (++attempts < retries) {
-                        setTimeout(wait, interval);
-                    } else {
-                        console.error(`[waitForLogger] createHookLogger not ready for ${metadata.name}`);
-                    }
-                } catch (e) {
-                    console.error(`[waitForLogger] Failed for ${metadata.name}: ${e}`);
-                }
+    globalThis.waitForLogger = function waitForLogger(metadata, timeout = 5000, interval = 100) {
+        return new Promise((resolve, reject) => {
+            const start = Date.now();
+
+            const check = () => {
+            if (typeof globalThis.createHookLogger === 'function') {
+                console.log(`[waitForLogger] Logger ready for ${metadata.name}`);
+                const logger = createHookLogger(metadata);
+                resolve(logger);
+            } else if (Date.now() - start < timeout) {
+                setTimeout(check, interval);
+            } else {
+                const msg = `[waitForLogger] Timeout waiting for createHookLogger (${metadata.name})`;
+                console.error(msg);
+                reject(new Error(msg));
+            }
             };
-            wait();
-        };
-    }
+
+            check();
+        });
+    };
 
     // Helper: Create structured hook logger
     if (typeof globalThis.createHookLogger !== 'function') {
@@ -145,57 +145,67 @@
         };
     }
 
-    globalThis.safeAttach = function (
+    globalThis.safeAttach = function safeAttach(
         funcName,
         callbacks,
         moduleName = null,
         {
-            delay = 1000,
+            initialDelay = 0,
             maxRetries = 10,
-            retryInterval = 300,
+            retryInterval = 200,
             verbose = true
         } = {}
         ) {
-        let attempts = 0;
+        return new Promise((resolve, reject) => {
+            let attempts = 0;
 
-        const tryAttach = () => {
+            const tryHook = () => {
+            let addr = null;
             try {
-            const addr = Module.findExportByName(moduleName, funcName);
-            if (!addr || addr.isNull()) {
-                if (verbose) console.warn(`[safeAttach] ${funcName} not found.`);
-                if (++attempts < maxRetries) setTimeout(tryAttach, retryInterval);
-                return;
+                addr = Module.findExportByName(moduleName, funcName);
+            } catch (e) {
+                return retry(`[safeAttach] Module lookup failed for ${funcName}: ${e}`);
             }
 
-            if (typeof Interceptor === 'undefined') {
-                console.error("[frida_helpers] Interceptor not available yet");
+            if (!addr) {
+                return retry(`[safeAttach] ${funcName} not found in ${moduleName || "default module"}`);
             }
 
             if (typeof Interceptor?.attach !== 'function') {
-                if (++attempts < maxRetries) {
-                if (verbose) console.warn(`[safeAttach] Interceptor not ready for ${funcName}, retrying...`);
-                setTimeout(tryAttach, retryInterval);
-                }
-                return;
+                return retry(`[safeAttach] Interceptor.attach not available`);
             }
 
-            Interceptor.attach(addr, callbacks);
-            console.log(`[safeAttach] Hooked ${funcName} at ${addr}`);
-            console.log(`[safeAttach] Hooked ${funcName} at ${addr}`);
-            return; // Prevent retry after success
-
-            } catch (ex) {
-                console.error(`[safeAttach] Hooking ${funcName} failed:`, ex);
+            try {
+                Interceptor.attach(addr, callbacks);
+                if (verbose) console.log(`[safeAttach] Hooked ${funcName} at ${addr}`);
+                resolve(addr);
+            } catch (e) {
+                reject(`[safeAttach] Attaching to ${funcName} failed: ${e}`);
             }
-        };
+            };
 
-        setTimeout(tryAttach, delay);
+            const retry = (log) => {
+            if (++attempts < maxRetries) {
+                if (verbose) console.warn(`${log}, retrying (${attempts}/${maxRetries})`);
+                setTimeout(tryHook, retryInterval);
+            } else {
+                const msg = `[safeAttach] Giving up on ${funcName} after ${maxRetries} attempts`;
+                console.error(msg);
+                reject(msg);
+            }
+            };
+
+            setTimeout(tryHook, initialDelay);
+        });
     };
 
+
     // Notify host
-    try {
-        if (!globalThis._fridaHelpersInitialized) {
-            globalThis._fridaHelpersInitialized = true;
+ try {
+    if (!globalThis._fridaHelpersInitialized) {
+        globalThis._fridaHelpersInitialized = true;
+
+        runWhenJavaIsReady(() => {
             send({
                 type: 'frida_helpers_loaded',
                 hook: "frida_helpers",
@@ -205,11 +215,12 @@
                 globals: {
                     runWhenJavaIsReady: typeof runWhenJavaIsReady === 'function',
                     createHookLogger: typeof createHookLogger === 'function',
-                    isJavaAvailable: isJavaAvailable(),
+                    isJavaAvailable: true  // We KNOW it's true here
                 }
             });
-        }
-    } catch (e) {
-        console.error("[frida_helpers] Initialization failed:", e);
+        });
     }
+} catch (e) {
+    console.error("[frida_helpers] Initialization failed:", e);
+}
 })();

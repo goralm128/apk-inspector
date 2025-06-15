@@ -56,6 +56,7 @@ def create_apk_inspector(
         rule_engine=rule_engine,
         report_builder=report_builder,
         workspace=workspace,
+        run_dir=run_dir,
         logger=logger,
         timeout=timeout
     )

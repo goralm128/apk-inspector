@@ -26,6 +26,7 @@ class APKInspector:
         rule_engine: RuleEngine,
         report_builder: APKReportBuilder,
         workspace: WorkspaceManager,
+        run_dir: Path,
         logger=None,
         timeout: int = 120
     ):
@@ -36,6 +37,7 @@ class APKInspector:
         self.rule_engine = rule_engine
         self.report_builder = report_builder
         self.workspace = workspace
+        self.run_dir = run_dir
         self.logger = logger or get_logger()
         self.timeout = timeout
 
@@ -80,6 +82,7 @@ class APKInspector:
                 logger=self.logger,
                 rule_engine=self.rule_engine,
                 tag_inferencer=tag_inferencer,
+                run_dir=self.run_dir,
                 timeout=self.timeout
             )
             events = dynamic_analyzer.analyze(package_name)

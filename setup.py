@@ -29,7 +29,8 @@ setup(
         "pandas>=2.2.0",
         "jinja2>=3.1.0",
         "plotly>=5.0.0",
-        "matplotlib>=3.8.0"
+        "matplotlib>=3.8.0",
+        "lxml>=5.2.0"
     ],
 
     entry_points={
