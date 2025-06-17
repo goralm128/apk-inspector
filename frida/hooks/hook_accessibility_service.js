@@ -1,75 +1,104 @@
 'use strict';
 
-const metadata = {
-    name: "hook_accessibility_service",
-    category: "accessibility_abuse",
-    description: "Monitors usage of AccessibilityService API",
-    tags: ["accessibility", "uiautomation", "abuse"],
+(async function () {
+  const metadata = {
+    name: "hook_native_sensitive",
+    category: "native_calls",
+    description: "Hooks sensitive native functions such as system, execve, dlopen, etc.",
+    tags: ["native", "libc", "dangerous", "execution"],
     sensitive: true
-};
+  };
 
-runWhenJavaIsReady(async () => {
+  const sensitiveFunctions = [
+    "system",
+    "execve",
+    "popen",
+    "fork",
+    "vfork",
+    "execl",
+    "execlp",
+    "execle",
+    "execv",
+    "execvp",
+    "execvpe",
+    "dlopen"
+  ];
+
+  const safeReadCString = (ptr) => {
     try {
-        const log = await waitForLogger(metadata);
-
-        const A = Java.use("android.accessibilityservice.AccessibilityService");
-        const original_onServiceConnected = A.onServiceConnected;
-
-        A.onServiceConnected.implementation = function () {
-            try {
-                log({ action: "onServiceConnected", component: this.getComponentName().toString() });
-            } catch (e) {
-                console.error(`[${metadata.name}] log failed: ${e}`);
-            }
-            return original_onServiceConnected.call(this);
-        };
-
-        const N = Java.use("android.view.accessibility.AccessibilityNodeInfo");
-        const original_performAction = N.performAction.overload('int');
-
-        original_performAction.implementation = function (actionId) {
-            try {
-                log({
-                    action: "performAction",
-                    action_id: actionId,
-                    node: this.toString()
-                });
-            } catch (e) {
-                console.error(`[${metadata.name}] log failed: ${e}`);
-            }
-            return original_performAction.call(this, actionId);
-        };
-
-        const AE = Java.use("android.view.accessibility.AccessibilityEvent");
-        const original_sendEvent = A.sendAccessibilityEvent;
-
-        A.sendAccessibilityEvent.implementation = function (event) {
-            try {
-                const type = event.getEventType();
-                const pkg = event.getPackageName()?.toString() || "unknown";
-                const cls = event.getClassName()?.toString() || "unknown";
-                const desc = event.getContentDescription()?.toString() || "none";
-                const txt = event.getText()?.toArray().join(" ") || "none";
-
-                log({
-                    action: "sendAccessibilityEvent",
-                    type,
-                    package: pkg,
-                    class: cls,
-                    description: desc,
-                    text: txt,
-                    time: event.getEventTime()
-                });
-            } catch (e) {
-                console.error(`[${metadata.name}] Failed to log AccessibilityEvent: ${e}`);
-            }
-
-            return original_sendEvent.call(this, event);
-        };
-
-        send({ type: 'hook_loaded', hook: metadata.name, java: true });
-        console.log(`[+] ${metadata.name} initialized`);
-    } catch (e) {
-        console.error(`[${metadata.name}] Initialization failed: ${e}`);
+      return ptr.readCString();
+    } catch (_) {
+      return "<unreadable>";
     }
-});
+  };
+
+  const getBacktrace = (context) => {
+    try {
+      return Thread.backtrace(context, Backtracer.ACCURATE)
+        .map(DebugSymbol.fromAddress)
+        .map(sym => `${sym.moduleName || "?"}!${sym.name || "?"}@${sym.address}`)
+        .join("\n");
+    } catch (_) {
+      return "N/A";
+    }
+  };
+
+  try {
+    const log = await waitForLogger(metadata);
+    console.log(`[${metadata.name}] Installing ${sensitiveFunctions.length} native hooks...`);
+
+    for (const func of sensitiveFunctions) {
+      await safeAttach(func, {
+        onEnter(args) {
+          try {
+            const caller = DebugSymbol.fromAddress(this.returnAddress) || {};
+            const moduleName = caller.moduleName || "unknown";
+            const symbolName = caller.name || "unknown";
+            const addr = this.context.pc;
+
+            let cmd = "";
+            if (["system", "popen"].includes(func) || func.startsWith("exec")) {
+              cmd = safeReadCString(args[0]);
+            }
+
+            log({
+              action: func,
+              command: cmd,
+              module: moduleName,
+              symbol: symbolName,
+              address: addr.toString(),
+              thread: get_thread_name(),
+              threadId: Process.getCurrentThreadId(),
+              processId: Process.id,
+              stack: getBacktrace(this.context),
+              tags: ["native", "sensitive_call"]
+            });
+
+            console.log(`[${metadata.name}] ${func}("${cmd}")`);
+          } catch (e) {
+            console.error(`[${metadata.name}] Logging failed in ${func}:`, e);
+          }
+        }
+      }, null, {
+        maxRetries: 10,
+        retryInterval: 250,
+        verbose: true
+      }).then(() => {
+        console.log(`[${metadata.name}] Hooked ${func}`);
+      }).catch(err => {
+        console.error(`[${metadata.name}] Failed to hook ${func}: ${err}`);
+      });
+    }
+
+    send({
+      type: 'hook_loaded',
+      hook: metadata.name,
+      java: false
+    });
+
+    console.log(`[+] ${metadata.name} initialized`);
+  } catch (e) {
+    console.error(`[${metadata.name}] Logger setup failed: ${e}`);
+  }
+
+})();

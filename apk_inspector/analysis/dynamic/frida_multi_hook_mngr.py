@@ -1,7 +1,9 @@
-from pathlib import Path
-from typing import List, Optional, Callable, Dict, Any
+
+import re
 import time
 import json
+from typing import List, Dict, Optional, Callable, Any
+from pathlib import Path
 
 class FridaMultiHookManager:
     def __init__(
@@ -11,7 +13,7 @@ class FridaMultiHookManager:
         logger,
         helpers_path: Optional[Path] = None,
         on_event_callback: Optional[Callable[[dict], None]] = None,
-        message_timeout: int = 10
+        message_timeout: int = 30
     ):
         self.session = session
         self.script_paths = script_paths
@@ -19,72 +21,65 @@ class FridaMultiHookManager:
         self.helpers_path = helpers_path
         self.on_event_callback = on_event_callback
         self.message_timeout = message_timeout
-
         self.events: List[Dict[str, Any]] = []
-        self.hook_status: Dict[str, bool] = {}
 
-    def _compose_script(self, script_path: Path) -> str:
-        try:
-            hook_code = script_path.read_text(encoding="utf-8")
-        except Exception as ex:
-            raise RuntimeError(f"Failed to read hook script {script_path}: {ex}")
+    def _normalize_metadata_constant(self, code: str) -> str:
+        """
+        Normalize all hook-local `const metadata_xyz = {...}` to `const metadata = {...}`
+        to avoid naming collisions when combining multiple hooks.
+        """
+        return re.sub(r'const\s+metadata_\w+\s*=', 'const metadata =', code)
 
-        helpers_code = ""
+    def _get_combined_script(self) -> str:
+        parts = []
+
         if self.helpers_path:
             try:
                 helpers_code = self.helpers_path.read_text(encoding="utf-8")
+                parts.append(f"// ===== Helpers =====\n{helpers_code}")
             except Exception as ex:
-                self.logger.warning(f"[FRIDA] Failed to read helpers from {self.helpers_path}: {ex}")
+                self.logger.warning(f"[FRIDA] Failed to read helpers: {ex}")
 
-        return f"{helpers_code}\n\n// ---- Hook Script Begins ----\n\n{hook_code}"
+        for path in self.script_paths:
+            try:
+                hook_code = path.read_text(encoding="utf-8")
+                normalized_code = self._normalize_metadata_constant(hook_code)
+                parts.append(f"// ===== Hook: {path.name} =====\n{normalized_code}")
+            except Exception as ex:
+                self.logger.warning(f"[FRIDA] Failed to read {path.name}: {ex}")
+
+        return "\n\n".join(parts)
 
     def _on_message(self, msg, data):
         if msg["type"] == "send":
             payload = msg.get("payload", {})
-            if not isinstance(payload, dict):
+            if isinstance(payload, dict):
+                payload["hook"] = payload.get("hook", "unknown")
+                self.events.append(payload)
+                self.logger.debug(f"[FRIDA EVENT][{payload['hook']}] {payload}")
+                if self.on_event_callback:
+                    try:
+                        self.on_event_callback(payload)
+                    except Exception as cb_ex:
+                        self.logger.warning(f"[FRIDA] on_event_callback error: {cb_ex}")
+            else:
                 self.logger.warning(f"[FRIDA] Non-dict payload: {payload}")
-                return
-
-            # Ensure hook is present
-            payload["hook"] = payload.get("hook") or "unknown"
-
-            self.events.append(payload)
-            self.logger.debug(f"[FRIDA EVENT][{payload['hook']}] {payload}")
-
-            if self.on_event_callback:
-                try:
-                    self.on_event_callback(payload)
-                except Exception as cb_err:
-                    self.logger.warning(f"[FRIDA] on_event_callback error: {cb_err}")
-
         elif msg["type"] == "error":
             self.logger.error(f"[FRIDA ERROR] {msg.get('stack', msg)}")
         else:
             self.logger.debug(f"[FRIDA MESSAGE] {msg}")
 
-    def _load_script(self, path: Path):
+    def load_all_hooks(self):
         try:
-            full_code = self._compose_script(path)
-            script = self.session.create_script(full_code)
+            full_script = self._get_combined_script()
+            script = self.session.create_script(full_script)
             script.on("message", self._on_message)
             script.load()
-            self.hook_status[path.name] = True
-            self.logger.info(f"[FRIDA] Loaded hook: {path.name}")
+            self.logger.info(f"[FRIDA] Successfully loaded merged script for {len(self.script_paths)} hooks.")
         except Exception as ex:
-            self.hook_status[path.name] = False
-            self.logger.error(f"[FRIDA ERROR] Failed to load {path.name}: {ex}")
-            self.logger.debug(f"[FRIDA DEBUG] Hook code from {path.name}:\n{full_code[:500]}...", exc_info=True)
+            self.logger.exception(f"[FRIDA ERROR] Failed to load combined script: {ex}")
 
-    def load_all_hooks(self):
-        self.logger.info(f"[FRIDA] Loading {len(self.script_paths)} hook scripts...")
-        for path in self.script_paths:
-            self._load_script(path)
-
-        failed = [k for k, ok in self.hook_status.items() if not ok]
-        if failed:
-            self.logger.warning(f"[FRIDA] The following hooks failed to load: {failed}")
-
-    def wait_for_activity(self, timeout: int = 10) -> bool:
+    def wait_for_activity(self, timeout: int = 60) -> bool:
         self.logger.info(f"[FRIDA] Waiting up to {timeout}s for hook activity...")
         deadline = time.time() + timeout
         while time.time() < deadline:
@@ -97,13 +92,10 @@ class FridaMultiHookManager:
     def run(self, run_duration: int = 60) -> List[dict]:
         self.logger.info(f"[FRIDA] Running hook manager for {run_duration}s...")
         self.load_all_hooks()
-
-        activity_detected = self.wait_for_activity(timeout=self.message_timeout)
-        if not activity_detected:
-            self.logger.warning("[FRIDA] No activity from any hook scripts.")
+        self.wait_for_activity(timeout=self.message_timeout)
 
         if run_duration > 0:
-            self.logger.debug(f"[FRIDA] Sleeping for {run_duration}s to collect runtime events...")
+            self.logger.debug(f"[FRIDA] Collecting runtime events for {run_duration}s...")
             time.sleep(run_duration)
 
         valid_events = [e for e in self.events if isinstance(e, dict)]
@@ -111,5 +103,5 @@ class FridaMultiHookManager:
             self.logger.warning(f"[FRIDA] Dropped {len(self.events) - len(valid_events)} malformed events.")
 
         self.logger.info(f"[FRIDA] Returning {len(valid_events)} collected events.")
-        self.logger.debug(f"[FRIDA] Final event dump (up to 3): {json.dumps(valid_events[:3], indent=2)}")
+        self.logger.debug(f"[FRIDA] Sample event dump:\n{json.dumps(valid_events[:3], indent=2)}")
         return valid_events

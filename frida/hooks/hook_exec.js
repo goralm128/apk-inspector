@@ -1,57 +1,73 @@
 'use strict';
 
-const metadata = {
+(async function () {
+  const metadata = {
     name: "hook_exec",
     description: "Hooks native exec() calls",
     category: "native_injection",
     tags: ["native", "exec", "process"],
     sensitive: true
-};
+  };
 
-function tryReadCString(ptr) {
+  const execFunctions = [
+    { name: "execve", args: [0, 1], module: "libc.so" },
+    { name: "system", args: [0], module: "libc.so" },
+    { name: "popen", args: [0], module: "libc.so" }
+  ];
+
+  const tryReadCString = (ptr) => {
     try {
-        return ptr.readCString();
+      return ptr.readCString();
     } catch (_) {
-        return "<unreadable>";
+      return "<unreadable>";
     }
-}
+  };
 
-(async () => {
-    try {
-        const log = await waitForLogger(metadata);
+  try {
+    const log = await waitForLogger(metadata);
 
-        const functions = [
-            { name: "execve", args: [0, 1], module: "libc.so" },
-            { name: "system", args: [0], module: "libc.so" },
-            { name: "popen", args: [0], module: "libc.so" }
-        ];
+    runWhenJavaIsReady(() => {
+      execFunctions.forEach(async fn => {
+        try {
+          await safeAttach(fn.name, {
+            onEnter(args) {
+              try {
+                const argMap = {};
+                fn.args.forEach(i => {
+                  argMap[`arg${i}`] = tryReadCString(args[i]);
+                });
 
-        for (const fn of functions) {
-            try {
-                await safeAttach(fn.name, {
-                    onEnter(args) {
-                        const out = {};
-                        for (const i of fn.args) {
-                            out[`arg${i}`] = tryReadCString(args[i]);
-                        }
-                        log({
-                            action: fn.name,
-                            args: out,
-                            thread: get_thread_name(),
-                            stack: get_java_stack()
-                        });
-                    }
-                }, fn.module);
-                console.log(`[hook_exec] Attached to ${fn.name}`);
-            } catch (hookError) {
-                console.error(`[hook_exec] Failed to hook ${fn.name}: ${hookError}`);
+                log({
+                  action: fn.name,
+                  args: argMap,
+                  module: fn.module,
+                  thread: get_thread_name(),
+                  stack: get_java_stack(),
+                  tags: ["native", "exec_call"]
+                });
+
+                console.log(`[hook_exec] ${fn.name} called:`, JSON.stringify(argMap));
+              } catch (err) {
+                console.error(`[hook_exec] Logging failed for ${fn.name}: ${err}`);
+              }
             }
+          }, fn.module, {
+            maxRetries: 10,
+            retryInterval: 300,
+            verbose: true
+          });
+
+          console.log(`[hook_exec] Hooked ${fn.name}`);
+        } catch (err) {
+          console.error(`[hook_exec] Failed to attach ${fn.name}: ${err}`);
         }
+      });
 
-        send({ type: 'hook_loaded', hook: metadata.name, java: false });
-        console.log(`[+] ${metadata.name} initialized`);
+      send({ type: 'hook_loaded', hook: metadata.name, java: false });
+      console.log(`[+] ${metadata.name} initialized`);
+    });
 
-    } catch (e) {
-        console.error(`[${metadata.name}] Initialization failed: ${e}`);
-    }
+  } catch (e) {
+    console.error(`[hook_exec] Logger setup failed: ${e}`);
+  }
 })();

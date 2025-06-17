@@ -1,126 +1,143 @@
 'use strict';
 
-const metadata = {
-  name: "hook_socket_io",
-  category: "network",
-  description: "Hooks native socket operations with C2/IP/port blacklisting",
-  tags: ["native", "socket", "network", "threat"],
-  sensitive: true
-};
-
-// Blacklists
-const dangerousPorts = new Set([23, 80, 443, 502, 5037, 5555, 4444, 8080, 8443, 2323]);
-const maliciousIPs = new Set([
-  "192.99.251.51",
-  "31.170.161.216",
-  "95.211.216.148",
-  "27.255.79.225",
-  "121.42.149.52",
-  "103.207.85.8",
-  "85.101.222.222",
-  "62.204.41.189",
-  "93.48.80.252"
-]);
-
-// Map FD → endpoint
-const fdInfo = {};
-
-function isSuspicious(ip, port) {
-  return {
-    suspicious_ip: maliciousIPs.has(ip),
-    dangerous_port: dangerousPorts.has(port)
+(async function () {
+  const metadata = {
+    name: "hook_socket_io",
+    category: "network",
+    description: "Hooks native socket operations with C2/IP/port blacklisting",
+    tags: ["native", "socket", "network", "threat"],
+    sensitive: true
   };
-}
 
-function resolvePeer(fd) {
-  try {
-    const sockaddr = Memory.alloc(16);
-    const lenPtr = Memory.alloc(Process.pointerSize);
-    lenPtr.writeUInt(16);
+  const BLACKLISTED_PORTS = new Set([23, 80, 443, 502, 5037, 5555, 4444, 8080, 8443, 2323]);
+  const BLACKLISTED_IPS = new Set([
+    "192.99.251.51", "31.170.161.216", "95.211.216.148", "27.255.79.225",
+    "121.42.149.52", "103.207.85.8", "85.101.222.222", "62.204.41.189", "93.48.80.252"
+  ]);
 
-    const ret = Module.getExportByName(null, "getpeername")(fd, sockaddr, lenPtr);
-    if (ret !== 0) return null;
+  const fdMap = {};
 
-    const family = sockaddr.readU16();
-    if (family !== 2) return null; // AF_INET only
-    const port = ntohs(sockaddr.add(2).readU16());
-    const ipBytes = sockaddr.add(4).readByteArray(4);
-    const ip = Array.from(new Uint8Array(ipBytes)).join(".");
-    return { ip, port };
-  } catch (e) {
-    return null;
-  }
-}
-
-function ntohs(n) {
-  return ((n & 0xff) << 8) | ((n >> 8) & 0xff);
-}
-
-(async () => {
-  const log = await waitForLogger(metadata);
-
-  // Hook connect() to record fd → endpoint
-  try {
-    const connAddr = Module.getExportByName(null, "connect");
-    Interceptor.attach(connAddr, {
-      onEnter(args) {
-        this.fd = args[0].toInt32();
-      },
-      onLeave(ret) {
-        const info = resolvePeer(this.fd);
-        if (info) {
-          fdInfo[this.fd] = info;
-          const flags = isSuspicious(info.ip, info.port);
-          log({
-            action: "connect",
-            fd: this.fd,
-            ip: info.ip,
-            port: info.port,
-            ...flags
-          });
-        }
-      }
-    });
-    console.log(`[${metadata.name}] Hooked connect`);
-  } catch (e) {
-    console.error(`[${metadata.name}] Failed connect hook: ${e}`);
+  function ntohs(n) {
+    return ((n & 0xff) << 8) | ((n >> 8) & 0xff);
   }
 
-  // Attach generic socket functions
-  const funcs = ["send", "recv", "sendto", "recvfrom"];
-  for (const fn of funcs) {
+  function resolvePeer(fd) {
     try {
-      const addr = Module.getExportByName(null, fn);
-      Interceptor.attach(addr, {
-        onEnter(args) {
-          this.fd = args[0].toInt32();
-          this.name = fn;
-        },
-        onLeave(retval) {
-          const info = fdInfo[this.fd];
-          let ip = null, port = null;
-          let flags = { suspicious_ip: false, dangerous_port: false };
-          if (info) {
-            ip = info.ip;
-            port = info.port;
-            flags = isSuspicious(ip, port);
-          }
-          log({
-            action: this.name,
-            fd: this.fd,
-            bytes: retval.toInt32(),
-            ip,
-            port,
-            ...flags
-          });
-        }
-      });
-      console.log(`[${metadata.name}] Hooked ${fn}`);
-    } catch (e) {
-      console.error(`[${metadata.name}] Failed hooking ${fn}: ${e}`);
+      const sockaddr = Memory.alloc(16);
+      const lenPtr = Memory.alloc(Process.pointerSize);
+      lenPtr.writeU32(16);
+
+      const fn = new NativeFunction(Module.getExportByName(null, "getpeername"), "int", ["int", "pointer", "pointer"]);
+      const result = fn(fd, sockaddr, lenPtr);
+      if (result !== 0) return null;
+
+      const family = sockaddr.readU16();
+      if (family !== 2) return null;
+
+      const port = ntohs(sockaddr.add(2).readU16());
+      const ip = [
+        sockaddr.add(4).readU8(),
+        sockaddr.add(5).readU8(),
+        sockaddr.add(6).readU8(),
+        sockaddr.add(7).readU8()
+      ].join(".");
+
+      return { ip, port };
+    } catch (_) {
+      return null;
     }
   }
 
-  send({ type: 'hook_loaded', hook: metadata.name, java: false });
-  console.log(`[+] ${metadata.name} initialized`);
+  function tagSuspicious(ip, port) {
+    return {
+      suspicious_ip: BLACKLISTED_IPS.has(ip),
+      dangerous_port: BLACKLISTED_PORTS.has(port)
+    };
+  }
+
+  try {
+    const log = await waitForLogger(metadata);
+
+    runWhenJavaIsReady(() => {
+      // Hook connect()
+      safeAttach("connect", {
+        onEnter(args) {
+          this.fd = args[0]?.toInt32?.() ?? -1;
+        },
+        onLeave(retval) {
+          if (retval?.toInt32?.() === 0 && this.fd !== -1) {
+            const peer = resolvePeer(this.fd);
+            if (peer) {
+              fdMap[this.fd] = peer;
+
+              const tags = tagSuspicious(peer.ip, peer.port);
+              const event = {
+                action: "connect",
+                fd: this.fd,
+                ip: peer.ip,
+                port: peer.port,
+                ...tags,
+                thread: get_thread_name(),
+                threadId: Process.getCurrentThreadId(),
+                processId: Process.id
+              };
+
+              console.log(`[hook_socket_io] connect(${this.fd}) → ${peer.ip}:${peer.port}`);
+              log(event);
+            }
+          }
+        }
+      }, null, {
+        maxRetries: 8,
+        retryInterval: 250,
+        verbose: true
+      });
+
+      // Hook send, recv, sendto, recvfrom
+      const funcs = ["send", "recv", "sendto", "recvfrom"];
+      for (const fn of funcs) {
+        safeAttach(fn, {
+          onEnter(args) {
+            this.fd = args[0]?.toInt32?.() ?? -1;
+            this.fn = fn;
+          },
+          onLeave(retval) {
+            const peer = fdMap[this.fd] ?? resolvePeer(this.fd);
+            const ip = peer?.ip || "<unknown>";
+            const port = peer?.port || -1;
+            const tags = tagSuspicious(ip, port);
+
+            const event = {
+              action: this.fn,
+              fd: this.fd,
+              ip,
+              port,
+              bytes: retval?.toInt32?.() ?? -1,
+              ...tags,
+              thread: get_thread_name(),
+              threadId: Process.getCurrentThreadId(),
+              processId: Process.id
+            };
+
+            log(event);
+            console.log(`[hook_socket_io] ${this.fn}(${this.fd}) → ${event.bytes} bytes to ${ip}:${port}`);
+          }
+        }, null, {
+          maxRetries: 8,
+          retryInterval: 250,
+          verbose: true
+        }).then(() => {
+          console.log(`[hook_socket_io] Hooked ${fn}`);
+        }).catch(err => {
+          console.error(`[hook_socket_io] Failed to hook ${fn}: ${err}`);
+        });
+      }
+
+      send({ type: "hook_loaded", hook: metadata.name, java: false });
+      console.log(`[+] ${metadata.name} initialized`);
+    });
+
+  } catch (e) {
+    console.error(`[hook_socket_io] Logger setup or initialization failed: ${e}`);
+  }
 })();

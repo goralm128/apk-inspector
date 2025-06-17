@@ -7,25 +7,25 @@ from apk_inspector.analysis.dynamic.hook_validator import validate_hook_script
 
 def extract_metadata_from_hook(script_path: Path) -> Optional[Dict]:
     """
-    Parses the `const metadata = { ... }` block from a Frida hook file.
+    Parses the `const metadata = { ... }` or `const metadata_<hook> = { ... }` block from a Frida hook file.
     Handles JS-style syntax with unquoted keys, booleans, and arrays.
     """
     try:
         text = script_path.read_text(encoding="utf-8")
 
-        # Match metadata block using a tolerant regex
-        match = re.search(r'const\s+metadata\s*=\s*{(.*?)};', text, re.DOTALL)
+        # Try to match both `const metadata = {` and `const metadata_<suffix> = {`
+        match = re.search(r'(?:const|var|let)\s+metadata(?:_\w+)?\s*=\s*{(.*?)};', text, re.DOTALL)
         if not match:
             return None
 
         block = match.group(1)
 
-        # Normalize JS -> JSON
+        # Normalize JS → JSON
         block = re.sub(r'//.*', '', block)  # Remove line comments
         block = re.sub(r'/\*.*?\*/', '', block, flags=re.DOTALL)  # Remove block comments
         block = re.sub(r'(\w+)\s*:', r'"\1":', block)  # Quote keys
         block = block.replace("'", '"')
-        block = block.replace("true", "true").replace("false", "false")  # JS boolean literals
+        block = block.replace("true", "true").replace("false", "false")  # No-op for clarity
         block = "{" + block.strip().rstrip(",") + "}"
 
         return json.loads(block)

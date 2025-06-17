@@ -1,76 +1,95 @@
 'use strict';
 
-const metadata = {
+(async function () {
+  const metadata = {
     name: "hook_dexloader",
     category: "dex_loading",
     description: "Tracks runtime DEX loading and flags suspicious paths",
     tags: ["java", "dex", "loader", "heuristic"],
     sensitive: true
-};
+  };
 
-const suspiciousPaths = [
+  const suspiciousPaths = [
     "/sdcard/",
     "/storage/emulated/",
     "/data/local/tmp/",
     "/dev/"
-];
+  ];
 
-function isSuspiciousPath(path) {
-    if (!path) return false;
-    return suspiciousPaths.some(suspicious => path.includes(suspicious));
-}
+  const isSuspicious = (path) =>
+    typeof path === 'string' && suspiciousPaths.some(p => path.includes(p));
 
-runWhenJavaIsReady(async () => {
-    try {
-        const log = await waitForLogger(metadata);
+  try {
+    const log = await waitForLogger(metadata);
 
-        // DexClassLoader
-        const DexClassLoader = Java.use("dalvik.system.DexClassLoader");
-        const dexInit = DexClassLoader.$init.overload(
-            "java.lang.String", "java.lang.String", "java.lang.String", "java.lang.ClassLoader"
+    runWhenJavaIsReady(() => {
+      try {
+        // Hook DexClassLoader
+        const DexCL = Java.use("dalvik.system.DexClassLoader");
+        const dexInit = DexCL.$init.overload(
+          "java.lang.String", "java.lang.String", "java.lang.String", "java.lang.ClassLoader"
         );
 
         dexInit.implementation = function (dexPath, optDir, libPath, parent) {
-            const suspicious = isSuspiciousPath(dexPath) || isSuspiciousPath(optDir);
+          const dexStr = dexPath?.toString?.() || "null";
+          const optStr = optDir?.toString?.() || "null";
+          const libStr = libPath?.toString?.() || "null";
+          const parentStr = parent?.toString?.() || "null";
 
-            log({
-                action: "DexClassLoader.init",
-                dex_path: dexPath,
-                optimized_directory: optDir,
-                library_search_path: libPath,
-                parent_loader: parent?.toString() || "null",
-                suspicious,
-                thread: get_thread_name(),
-                stack: get_java_stack()
-            });
+          const suspicious = isSuspicious(dexStr) || isSuspicious(optStr);
 
-            return dexInit.call(this, dexPath, optDir, libPath, parent);
+          log({
+            action: "DexClassLoader.init",
+            dex_path: dexStr,
+            optimized_directory: optStr,
+            library_search_path: libStr,
+            parent_loader: parentStr,
+            suspicious,
+            thread: get_thread_name(),
+            stack: get_java_stack()
+          });
+
+          console.log(`[hook_dexloader] DexClassLoader.init:\n  Dex: ${dexStr}\n  Opt: ${optStr}`);
+          return dexInit.call(this, dexPath, optDir, libPath, parent);
         };
+        console.log("[hook_dexloader] DexClassLoader hook installed");
+      } catch (e) {
+        console.error("[hook_dexloader] Failed to hook DexClassLoader:", e);
+      }
 
-        // PathClassLoader
-        const PathClassLoader = Java.use("dalvik.system.PathClassLoader");
-        const pathInit = PathClassLoader.$init.overload(
-            "java.lang.String", "java.lang.ClassLoader"
-        );
+      try {
+        // Hook PathClassLoader
+        const PathCL = Java.use("dalvik.system.PathClassLoader");
+        const pathInit = PathCL.$init.overload("java.lang.String", "java.lang.ClassLoader");
 
         pathInit.implementation = function (path, parent) {
-            const suspicious = isSuspiciousPath(path);
+          const pathStr = path?.toString?.() || "null";
+          const parentStr = parent?.toString?.() || "null";
 
-            log({
-                action: "PathClassLoader.init",
-                dex_path: path,
-                parent_loader: parent?.toString() || "null",
-                suspicious,
-                thread: get_thread_name(),
-                stack: get_java_stack()
-            });
+          const suspicious = isSuspicious(pathStr);
 
-            return pathInit.call(this, path, parent);
+          log({
+            action: "PathClassLoader.init",
+            dex_path: pathStr,
+            parent_loader: parentStr,
+            suspicious,
+            thread: get_thread_name(),
+            stack: get_java_stack()
+          });
+
+          console.log(`[hook_dexloader] PathClassLoader.init: ${pathStr}`);
+          return pathInit.call(this, path, parent);
         };
+        console.log("[hook_dexloader] PathClassLoader hook installed");
+      } catch (e) {
+        console.error("[hook_dexloader] Failed to hook PathClassLoader:", e);
+      }
 
-        send({ type: 'hook_loaded', hook: metadata.name, java: true });
-        console.log(`[+] ${metadata.name} initialized`);
-    } catch (e) {
-        console.error(`[${metadata.name}] Initialization failed: ${e}`);
-    }
-});
+      send({ type: 'hook_loaded', hook: metadata.name, java: true });
+      console.log(`[+] ${metadata.name} initialized`);
+    });
+
+  } catch (e) {
+    console.error(`[hook_dexloader] Logger setup failed: ${e}`);
+  }
+})();
