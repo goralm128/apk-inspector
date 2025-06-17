@@ -6,7 +6,8 @@
     category: "dex_loading",
     description: "Tracks runtime DEX loading and flags suspicious paths",
     tags: ["java", "dex", "loader", "heuristic"],
-    sensitive: true
+    sensitive: true,
+    entrypoint: "java"
   };
 
   const suspiciousPaths = [

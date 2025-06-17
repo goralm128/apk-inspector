@@ -6,7 +6,8 @@
     category: "network",
     description: "Hooks native socket I/O and flags C2 indicators (ports, IPs)",
     tags: ["native", "network", "send", "recv", "threat_intel"],
-    sensitive: true
+    sensitive: true,
+    entrypoint: "native"
   };
 
   const C2_IPS = new Set([

@@ -6,7 +6,8 @@
     category: "filesystem",
     description: "Hooks native read/write file operations with enhanced context",
     tags: ["native", "read", "write", "fs", "buffer"],
-    sensitive: true
+    sensitive: true,
+    entrypoint: "native"
   };
 
   const actions = ["read", "write"];

@@ -6,7 +6,8 @@
     description: "Monitors native calls to ptrace, getenv, fgets, kill for anti-debug and evasion tactics",
     category: "native_sensitive",
     tags: ["native", "anti_debug", "env_check", "sensitive_read"],
-    sensitive: true
+    sensitive: true,
+    entrypoint: "native"
   };
 
   function tryReadCString(ptr) {

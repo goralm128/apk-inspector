@@ -6,7 +6,8 @@
     category: "network",
     description: "Intercepts Apache HttpClient usage",
     tags: ["java", "network", "apache", "httpclient"],
-    sensitive: true
+    sensitive: true,
+    entrypoint: "java"
   };
 
   function isSuspiciousUrl(url) {

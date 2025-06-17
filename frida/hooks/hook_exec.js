@@ -6,7 +6,8 @@
     description: "Hooks native exec() calls",
     category: "native_injection",
     tags: ["native", "exec", "process"],
-    sensitive: true
+    sensitive: true,
+    entrypoint: "native"
   };
 
   const execFunctions = [

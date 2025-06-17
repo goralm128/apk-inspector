@@ -6,22 +6,13 @@
     category: "native_calls",
     description: "Hooks sensitive native functions such as system, execve, dlopen, etc.",
     tags: ["native", "libc", "dangerous", "execution"],
-    sensitive: true
+    sensitive: true,
+    entrypoint: "native" 
   };
 
   const sensitiveFunctions = [
-    "system",
-    "execve",
-    "popen",
-    "fork",
-    "vfork",
-    "execl",
-    "execlp",
-    "execle",
-    "execv",
-    "execvp",
-    "execvpe",
-    "dlopen"
+    "system", "execve", "popen", "fork", "vfork",
+    "execl", "execlp", "execle", "execv", "execvp", "execvpe", "dlopen"
   ];
 
   const safeReadCString = (ptr) => {
@@ -43,8 +34,25 @@
     }
   };
 
+  const waitForLoggerWithoutJava = (metadata, timeout = 5000, interval = 100) => {
+    return new Promise((resolve, reject) => {
+      const start = Date.now();
+      const check = () => {
+        if (typeof globalThis.createHookLogger === 'function') {
+          const logger = createHookLogger(metadata);
+          resolve(logger);
+        } else if (Date.now() - start < timeout) {
+          setTimeout(check, interval);
+        } else {
+          reject(new Error(`[${metadata.name}] Logger unavailable after ${timeout}ms`));
+        }
+      };
+      check();
+    });
+  };
+
   try {
-    const log = await waitForLogger(metadata);
+    const log = await waitForLoggerWithoutJava(metadata);
     console.log(`[${metadata.name}] Installing ${sensitiveFunctions.length} native hooks...`);
 
     for (const func of sensitiveFunctions) {
@@ -100,5 +108,4 @@
   } catch (e) {
     console.error(`[${metadata.name}] Logger setup failed: ${e}`);
   }
-
 })();

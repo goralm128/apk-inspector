@@ -6,7 +6,8 @@
     category: "network",
     description: "Hooks native socket operations with C2/IP/port blacklisting",
     tags: ["native", "socket", "network", "threat"],
-    sensitive: true
+    sensitive: true,
+    entrypoint: "native"
   };
 
   const BLACKLISTED_PORTS = new Set([23, 80, 443, 502, 5037, 5555, 4444, 8080, 8443, 2323]);

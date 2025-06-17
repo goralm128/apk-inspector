@@ -238,22 +238,24 @@
     if (!globalThis._fridaHelpersInitialized) {
       globalThis._fridaHelpersInitialized = true;
 
-      runWhenJavaIsReady().then(() => {
-        send({
-          type: 'frida_helpers_loaded',
-          hook: "frida_helpers",
-          category: 'system',
-          tags: ["init"],
-          timestamp: new Date().toISOString(),
-          globals: {
-            runWhenJavaIsReady: typeof runWhenJavaIsReady === 'function',
-            createHookLogger: typeof createHookLogger === 'function',
-            isJavaAvailable: true
-          }
-        });
-      }).catch((e) => {
-        console.error("[frida_helpers] Could not initialize Java:", e);
+      send({
+        type: 'frida_helpers_loaded',
+        hook: "frida_helpers",
+        category: 'system',
+        tags: ["init"],
+        timestamp: new Date().toISOString(),
+        globals: {
+          runWhenJavaIsReady: typeof runWhenJavaIsReady === 'function',
+          createHookLogger: typeof createHookLogger === 'function',
+          isJavaAvailable: typeof Java !== 'undefined'
+        }
       });
+
+      if (typeof Java !== 'undefined') {
+        runWhenJavaIsReady().catch((e) => {
+          console.error("[frida_helpers] Java readiness check failed:", e);
+        });
+      }
     }
   } catch (e) {
     console.error("[frida_helpers] Initialization failed:", e);

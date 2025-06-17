@@ -6,7 +6,8 @@
     category: "network",
     description: "Intercepts native socket connect() calls",
     tags: ["network", "native", "socket"],
-    sensitive: true
+    sensitive: true,
+    entrypoint: "native"
   };
 
   // --- Utility functions ---

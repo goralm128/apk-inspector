@@ -6,7 +6,8 @@
     category: "filesystem",
     description: "Hooks native read/write file operations",
     tags: ["native", "read", "write", "fs"],
-    sensitive: true
+    sensitive: true,
+    entrypoint: "native"
   };
 
   function resolveFdPath(fd) {

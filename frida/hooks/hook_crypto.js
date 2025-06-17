@@ -6,7 +6,8 @@
     category: "crypto_usage",
     description: "Monitors Java crypto API usage",
     tags: ["crypto", "java", "cipher"],
-    sensitive: true
+    sensitive: true,
+    entrypoint: "java"
   };
 
   try {

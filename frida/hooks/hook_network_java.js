@@ -6,7 +6,8 @@
     category: "network",
     description: "Intercepts Java network activity",
     tags: ["java", "network"],
-    sensitive: false
+    sensitive: false,
+    entrypoint: "java"
   };
 
   try {
