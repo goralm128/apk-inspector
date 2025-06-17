@@ -27,46 +27,44 @@
   try {
     const log = await waitForLogger(metadata);
 
-    runWhenJavaIsReady(() => {
-      execFunctions.forEach(async fn => {
-        try {
-          await safeAttach(fn.name, {
-            onEnter(args) {
-              try {
-                const argMap = {};
-                fn.args.forEach(i => {
-                  argMap[`arg${i}`] = tryReadCString(args[i]);
-                });
+    for (const fn of execFunctions) {
+      try {
+        await safeAttach(fn.name, {
+          onEnter(args) {
+            try {
+              const argMap = {};
+              fn.args.forEach(i => {
+                argMap[`arg${i}`] = tryReadCString(args[i]);
+              });
 
-                log({
-                  action: fn.name,
-                  args: argMap,
-                  module: fn.module,
-                  thread: get_thread_name(),
-                  stack: get_java_stack(),
-                  tags: ["native", "exec_call"]
-                });
+              log({
+                action: fn.name,
+                args: argMap,
+                module: fn.module,
+                thread: get_thread_name(),
+                stack: get_java_stack(),
+                tags: ["native", "exec_call"]
+              });
 
-                console.log(`[hook_exec] ${fn.name} called:`, JSON.stringify(argMap));
-              } catch (err) {
-                console.error(`[hook_exec] Logging failed for ${fn.name}: ${err}`);
-              }
+              console.log(`[hook_exec] ${fn.name} called:`, JSON.stringify(argMap));
+            } catch (err) {
+              console.error(`[hook_exec] Logging failed for ${fn.name}: ${err}`);
             }
-          }, fn.module, {
-            maxRetries: 10,
-            retryInterval: 300,
-            verbose: true
-          });
+          }
+        }, fn.module, {
+          maxRetries: 10,
+          retryInterval: 300,
+          verbose: true
+        });
 
-          console.log(`[hook_exec] Hooked ${fn.name}`);
-        } catch (err) {
-          console.error(`[hook_exec] Failed to attach ${fn.name}: ${err}`);
-        }
-      });
+        console.log(`[hook_exec] Hooked ${fn.name}`);
+      } catch (err) {
+        console.error(`[hook_exec] Failed to attach ${fn.name}: ${err}`);
+      }
+    }
 
-      send({ type: 'hook_loaded', hook: metadata.name, java: false });
-      console.log(`[+] ${metadata.name} initialized`);
-    });
+    send({ type: 'hook_loaded', hook: metadata.name, java: false });
+    console.log(`[+] ${metadata.name} initialized`);
 
   } catch (e) {
     console.error(`[hook_exec] Logger setup failed: ${e}`);

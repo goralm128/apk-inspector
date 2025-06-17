@@ -41,12 +41,23 @@
     };
   }
 
+  function formatBacktrace(ctx) {
+    try {
+      return Thread.backtrace(ctx, Backtracer.ACCURATE)
+        .map(DebugSymbol.fromAddress)
+        .map(sym => `${sym.moduleName || "?"}!${sym.name || "?"} @ ${sym.address}`);
+    } catch (_) {
+      return ["<no backtrace>"];
+    }
+  }
+
   try {
     const log = await waitForLogger(metadata);
+    const funcs = ["send", "recv"];
 
-    runWhenJavaIsReady(() => {
-      ["send", "recv"].forEach(fn => {
-        safeAttach(fn, {
+    for (const fn of funcs) {
+      try {
+        await safeAttach(fn, {
           onEnter(args) {
             this.fn = fn;
             this.fd = args[0]?.toInt32?.() ?? -1;
@@ -75,9 +86,7 @@
               thread: get_thread_name(),
               threadId: Process.getCurrentThreadId(),
               processId: Process.id,
-              stack: Thread.backtrace(this.context, Backtracer.ACCURATE)
-                .map(DebugSymbol.fromAddress)
-                .map(sym => `${sym.moduleName || "?"}!${sym.name || "?"} @ ${sym.address}`)
+              stack: formatBacktrace(this.context)
             };
 
             if (bytes > 0 && bytes <= 4096) {
@@ -96,16 +105,16 @@
           maxRetries: 10,
           retryInterval: 250,
           verbose: true
-        }).then(() => {
-          console.log(`[hook_io_net] Hooked ${fn}`);
-        }).catch(err => {
-          console.error(`[hook_io_net] Failed to hook ${fn}: ${err}`);
         });
-      });
 
-      send({ type: 'hook_loaded', hook: metadata.name, java: false });
-      console.log(`[+] ${metadata.name} initialized`);
-    });
+        console.log(`[hook_io_net] Hooked ${fn}`);
+      } catch (err) {
+        console.error(`[hook_io_net] Failed to hook ${fn}: ${err}`);
+      }
+    }
+
+    send({ type: 'hook_loaded', hook: metadata.name, java: false });
+    console.log(`[+] ${metadata.name} initialized`);
 
   } catch (e) {
     console.error(`[hook_io_net] Logger setup or hook attach failed: ${e}`);

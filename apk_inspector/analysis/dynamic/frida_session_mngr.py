@@ -21,7 +21,7 @@ class FridaSessionManager:
         helpers_path,
         run_dir,
         logger,
-        timeout=60,
+        timeout,
         grace_period=5,
         leave_app_running=False
     ):
@@ -75,11 +75,11 @@ class FridaSessionManager:
             device.resume(pid)
             
             self.logger.info(f"[FRIDA] Waiting for Java VM to become available...")
-            await asyncio.sleep(10)  # Give the VM time to initialize before check
-            java_ready = await wait_for_java_vm(session, self.logger, timeout=30)
+            await asyncio.sleep(20)  # Give the VM time to initialize before check
+            java_ready = await wait_for_java_vm(session, self.logger, timeout=60)
 
             if not java_ready:
-                self.logger.warning("[FRIDA] Java VM still not available after 30s")
+                self.logger.warning("[FRIDA] Java VM still not available after 60s")
 
             self.logger.info(f"[FRIDA] Run time set to {self.timeout} seconds")
             events = hook_mngr.run(run_duration=self.timeout)

@@ -31,14 +31,23 @@
     return null;
   }
 
+  function formatBacktrace(ctx) {
+    try {
+      return Thread.backtrace(ctx, Backtracer.ACCURATE)
+        .map(DebugSymbol.fromAddress)
+        .map(sym => `${sym.moduleName || "?"}!${sym.name || "?"}@${sym.address}`);
+    } catch (_) {
+      return ["<no backtrace>"];
+    }
+  }
+
   try {
     const log = await waitForLogger(metadata);
+    const functions = ["read", "write"];
 
-    runWhenJavaIsReady(() => {
-      const functions = ["read", "write"];
-
-      for (const name of functions) {
-        safeAttach(name, {
+    for (const name of functions) {
+      try {
+        await safeAttach(name, {
           onEnter(args) {
             this.name = name;
             this.fd = args[0]?.toInt32?.() ?? -1;
@@ -62,9 +71,7 @@
               thread: get_thread_name(),
               threadId: Process.getCurrentThreadId(),
               processId: Process.id,
-              stack: Thread.backtrace(this.context, Backtracer.ACCURATE)
-                .map(DebugSymbol.fromAddress)
-                .map(sym => `${sym.moduleName || "?"}!${sym.name || "?"}@${sym.address}`),
+              stack: formatBacktrace(this.context),
               tags: ["fs"].concat(suspicious ? ["suspicious_path"] : [])
             };
 
@@ -79,16 +86,16 @@
           maxRetries: 10,
           retryInterval: 250,
           verbose: true
-        }).then(() => {
-          console.log(`[hook_io_fs] Hooked ${name}`);
-        }).catch(err => {
-          console.error(`[hook_io_fs] Failed to hook ${name}: ${err}`);
         });
-      }
 
-      send({ type: 'hook_loaded', hook: metadata.name, java: false });
-      console.log(`[+] ${metadata.name} initialized`);
-    });
+        console.log(`[hook_io_fs] Hooked ${name}`);
+      } catch (err) {
+        console.error(`[hook_io_fs] Failed to hook ${name}: ${err}`);
+      }
+    }
+
+    send({ type: 'hook_loaded', hook: metadata.name, java: false });
+    console.log(`[+] ${metadata.name} initialized`);
 
   } catch (err) {
     console.error(`[hook_io_fs] Logger setup failed: ${err}`);

@@ -43,64 +43,60 @@
   try {
     const log = await waitForLogger(metadata);
 
-    runWhenJavaIsReady(() => {
-      actions.forEach(fn => {
-        safeAttach(fn, {
-          onEnter(args) {
-            this.fn = fn;
-            this.fd = args[0]?.toInt32?.() ?? -1;
-            this.buf = args[1];
-            this.len = args[2]?.toInt32?.() ?? 0;
-            this.context = this.context;
-            this.path = resolveFdPath(this.fd);
-          },
-          onLeave(retval) {
-            const bytes = retval?.toInt32?.() ?? -1;
-            const suspicious = this.len > 4096 || /proc|data|cache|tmp|su|sh/i.test(this.path);
+    for (const fn of actions) {
+      await safeAttach(fn, {
+        onEnter(args) {
+          this.fn = fn;
+          this.fd = args[0]?.toInt32?.() ?? -1;
+          this.buf = args[1];
+          this.len = args[2]?.toInt32?.() ?? 0;
+          this.context = this.context;
+          this.path = resolveFdPath(this.fd);
+        },
+        onLeave(retval) {
+          const bytes = retval?.toInt32?.() ?? -1;
+          const suspicious = this.len > 4096 || /proc|data|cache|tmp|su|sh/i.test(this.path);
 
-            const event = {
-              action: this.fn,
-              direction: this.fn === "write" ? "outbound" : "inbound",
-              fd: this.fd,
-              file_path: this.path,
-              bytes,
-              error: bytes < 0,
-              suspicious,
-              thread: get_thread_name(),
-              threadId: Process.getCurrentThreadId(),
-              processId: Process.id,
-              stack: getBacktrace(this.context),
-              tags: ["fs", "readwrite"]
-            };
+          const event = {
+            action: this.fn,
+            direction: this.fn === "write" ? "outbound" : "inbound",
+            fd: this.fd,
+            file_path: this.path,
+            bytes,
+            error: bytes < 0,
+            suspicious,
+            thread: get_thread_name(),
+            threadId: Process.getCurrentThreadId(),
+            processId: Process.id,
+            stack: getBacktrace(this.context),
+            tags: ["fs", "readwrite"]
+          };
 
-            if (this.fn === "write" && bytes > 0 && bytes <= 2048) {
-              try {
-                const raw = Memory.readByteArray(this.buf, bytes);
-                event.buffer_sha1 = computeSha1(raw);
-              } catch (_) {
-                event.buffer_sha1 = "<unreadable>";
-              }
+          if (this.fn === "write" && bytes > 0 && bytes <= 2048) {
+            try {
+              const raw = Memory.readByteArray(this.buf, bytes);
+              event.buffer_sha1 = computeSha1(raw);
+            } catch (_) {
+              event.buffer_sha1 = "<unreadable>";
             }
-
-            log(event);
-            console.log(`[hook_readwrite] ${this.fn}(${this.fd}) → ${bytes} bytes @ ${this.path}`);
           }
-        }, null, {
-          maxRetries: 8,
-          retryInterval: 250,
-          verbose: true
-        }).then(() => {
-          console.log(`[hook_readwrite] Hooked ${fn}`);
-        }).catch(err => {
-          console.error(`[hook_readwrite] Failed to hook ${fn}: ${err}`);
-        });
+
+          log(event);
+          console.log(`[hook_readwrite] ${this.fn}(${this.fd}) → ${bytes} bytes @ ${this.path}`);
+        }
+      }, null, {
+        maxRetries: 8,
+        retryInterval: 250,
+        verbose: true
       });
 
-      send({ type: 'hook_loaded', hook: metadata.name, java: false });
-      console.log(`[+] ${metadata.name} initialized`);
-    });
+      console.log(`[hook_readwrite] Hooked ${fn}`);
+    }
+
+    send({ type: 'hook_loaded', hook: metadata.name, java: false });
+    console.log(`[+] ${metadata.name} initialized`);
 
   } catch (e) {
-    console.error(`[hook_readwrite] Logger setup failed: ${e}`);
+    console.error(`[hook_readwrite] Logger setup or hook initialization failed: ${e}`);
   }
 })();

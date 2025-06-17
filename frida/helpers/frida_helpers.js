@@ -56,6 +56,18 @@
     });
   };
 
+  // =====================[ Hook Entrypoint Dispatcher ]=====================
+  globalThis.maybeRunJavaHook = function (callback, metadata = {}) {
+    const entry = metadata.entrypoint?.toLowerCase?.();
+    if (entry === "java") {
+      runWhenJavaIsReady().then(callback).catch(err => {
+        console.error(`[maybeRunJavaHook] Java VM not ready for '${metadata.name}': ${err}`);
+      });
+    } else {
+      callback();
+    }
+  };
+
   // =====================[ Logger Factory ]=====================
   globalThis.createHookLogger = function ({
     hook,
@@ -246,16 +258,11 @@
         timestamp: new Date().toISOString(),
         globals: {
           runWhenJavaIsReady: typeof runWhenJavaIsReady === 'function',
+          maybeRunJavaHook: typeof maybeRunJavaHook === 'function',
           createHookLogger: typeof createHookLogger === 'function',
           isJavaAvailable: typeof Java !== 'undefined'
         }
       });
-
-      if (typeof Java !== 'undefined') {
-        runWhenJavaIsReady().catch((e) => {
-          console.error("[frida_helpers] Java readiness check failed:", e);
-        });
-      }
     }
   } catch (e) {
     console.error("[frida_helpers] Initialization failed:", e);

@@ -82,7 +82,7 @@ class DynamicAnalyzer:
                 helpers_path=self.helpers_path,
                 run_dir=self.run_dir,
                 logger=self.logger,
-                timeout=self.timeout,
+                timeout=90,
                 grace_period=self.grace_period
             )
             self.logger.info(f"[{package_name}] Session manager initialized.")

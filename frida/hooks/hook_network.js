@@ -42,56 +42,51 @@
     return [21, 22, 23, 25, 6666, 6667, 1337].includes(port);
   }
 
-  // --- Main logic ---
   try {
     const log = await waitForLogger(metadata);
 
-    runWhenJavaIsReady(() => {
-      safeAttach("connect", {
-        onEnter(args) {
-          try {
-            const sockaddr = args[1];
-            const parsed = parseSockAddr(sockaddr);
-            const suspicious = isSuspiciousIP(parsed.ip);
-            const dangerous = isDangerousPort(parsed.port);
+    await safeAttach("connect", {
+      onEnter(args) {
+        try {
+          const sockaddr = args[1];
+          const parsed = parseSockAddr(sockaddr);
+          const suspicious = isSuspiciousIP(parsed.ip);
+          const dangerous = isDangerousPort(parsed.port);
 
-            const tags = ["network"];
-            if (suspicious) tags.push("suspicious_ip");
-            if (dangerous) tags.push("dangerous_port");
+          const tags = ["network"];
+          if (suspicious) tags.push("suspicious_ip");
+          if (dangerous) tags.push("dangerous_port");
 
-            const event = {
-              action: "connect",
-              ip: parsed.ip,
-              port: parsed.port,
-              family: parsed.family,
-              suspicious,
-              dangerous,
-              thread: get_thread_name(),
-              threadId: Process.getCurrentThreadId(),
-              processId: Process.id,
-              tags
-            };
+          const event = {
+            action: "connect",
+            ip: parsed.ip,
+            port: parsed.port,
+            family: parsed.family,
+            suspicious,
+            dangerous,
+            thread: get_thread_name(),
+            threadId: Process.getCurrentThreadId(),
+            processId: Process.id,
+            tags
+          };
 
-            console.log(`[hook_network] connect() → ${parsed.ip}:${parsed.port}`);
-            log(event);
+          console.log(`[hook_network] connect() → ${parsed.ip}:${parsed.port}`);
+          log(event);
 
-          } catch (err) {
-            console.error(`[hook_network] Error parsing sockaddr: ${err}`);
-          }
+        } catch (err) {
+          console.error(`[hook_network] Error parsing sockaddr: ${err}`);
         }
-      }, null, {
-        maxRetries: 8,
-        retryInterval: 300,
-        verbose: true
-      }).then(() => {
-        send({ type: 'hook_loaded', hook: metadata.name, java: false });
-        console.log(`[+] ${metadata.name} initialized`);
-      }).catch(err => {
-        console.error(`[hook_network] Failed to attach: ${err}`);
-      });
+      }
+    }, null, {
+      maxRetries: 8,
+      retryInterval: 300,
+      verbose: true
     });
 
+    send({ type: 'hook_loaded', hook: metadata.name, java: false });
+    console.log(`[+] ${metadata.name} initialized`);
+
   } catch (e) {
-    console.error(`[hook_network] Logger setup failed: ${e}`);
+    console.error(`[hook_network] Logger setup or hook initialization failed: ${e}`);
   }
 })();
