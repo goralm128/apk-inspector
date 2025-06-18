@@ -1,17 +1,24 @@
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any, Tuple
 from pathlib import Path
 from collections import defaultdict, Counter
-import matplotlib.pyplot as plt
 from datetime import datetime
+
 from apk_inspector.reports.models import ApkSummary
 from apk_inspector.reports.summary.summary_builder import ApkSummaryBuilder
 from apk_inspector.reports.report_saver import ReportSaver
 from apk_inspector.utils.yara_utils import ensure_yara_models
-from apk_inspector.visual.chart_utils import generate_stacked_chart
-from apk_inspector.visual.dashboard_generator import generate_html_dashboard
-from apk_inspector.visual.chart_utils import generate_risk_breakdown_charts
-from apk_inspector.visual.tag_heatmap import visualize_tag_heatmap
 from apk_inspector.utils.logger import get_logger
+
+from apk_inspector.visual.chart_utils import (
+    generate_stacked_chart,
+    generate_risk_breakdown_chart,
+    generate_tag_pie_chart
+)
+from apk_inspector.visual.tag_heatmap import visualize_tag_heatmap
+from apk_inspector.visual.per_apk_dashboard import (
+    generate_per_apk_dashboard,
+    generate_index_page
+)
 
 
 class ReportManager:
@@ -22,227 +29,100 @@ class ReportManager:
 
     def store_analysis_results(self, results: List[Tuple[Dict[str, Any], ApkSummary]]) -> None:
         if not results:
-            self.logger.warning("[!] No analysis results to store.")
+            self.logger.warning("[!] No results to store.")
             return
 
         full_reports = [r[0] for r in results]
         summaries = [r[1] for r in results]
 
         self._save_combined_json(full_reports)
-        self._save_yara_summary(full_reports)
         self._save_summary_outputs(summaries)
 
         for report, summary in zip(full_reports, summaries):
-            package = report.get("apk_metadata", {}).get("package_name", "unknown")
-            self._save_per_apk_yara_results(report, package)
-            self._save_per_apk_tag_pie(report, package)
-            self._save_per_apk_stacked_charts(report, package)
+            pkg = summary.apk_package or "unknown"
+            apk_dir = self.report_saver.get_apk_dir(pkg)
+            self._save_per_apk_outputs(report, summary, apk_dir)
 
-        flat_events = []
-        for report in full_reports:
-            flat_events.extend(report.get("events", []))
-
-        if flat_events:
-            heatmap_path = self.run_dir / "tag_heatmap.html"
-            visualize_tag_heatmap(flat_events, str(heatmap_path))
-        else:
-            self.logger.warning("[~] No dynamic events found to generate heatmap.")
-
-        self.generate_tag_pie_chart(full_reports)
-
-        generate_stacked_chart(
-            reports=full_reports,
-            index_field="malware_family",
-            column_field="category",
-            title="Malware Family by YARA Category",
-            filename="stacked_family_chart.png",
-            run_dir=self.run_dir
-        )
-
-        generate_stacked_chart(
-            reports=full_reports,
-            index_field="severity",
-            column_field="category",
-            title="YARA Matches by Severity and Category",
-            filename="stacked_severity_chart.png",
-            run_dir=self.run_dir
-        )
-
-        risk_charts = generate_risk_breakdown_charts(summaries, self.run_dir)
-
-        all_charts = [
-            self.run_dir / "yara_tag_pie.png",
-            self.run_dir / "stacked_family_chart.png",
-            self.run_dir / "stacked_severity_chart.png",
-        ] + risk_charts
-
-        generate_html_dashboard(
-            run_dir=self.run_dir,
-            report_json_path=self.run_dir / "combined_report.json",
-            summary_csv_path=self.run_dir / "combined_summary.csv",
-            charts=all_charts,
-            summaries=summaries,
-            logger=self.logger
-        )
+        self._generate_heatmap(full_reports)
+        generate_index_page(summaries, self.run_dir)
 
     def _save_combined_json(self, reports: List[Dict[str, Any]]) -> None:
         path = self.run_dir / "combined_report.json"
-        enriched = 0
-
         for report in reports:
-            classification = report.get("classification", {})
-            if "cvss_risk_band" in classification:
-                report["risk_band"] = classification["cvss_risk_band"]
-                enriched += 1
-            else:
-                report["risk_band"] = "unknown"
-
-            metadata = report.get("apk_metadata", {})
-            if isinstance(metadata.get("analyzed_at"), datetime):
-                metadata["analyzed_at"] = metadata["analyzed_at"].isoformat()
-
-            triggered = report.get("triggered_rule_results", [])
-            for rule in triggered:
-                if isinstance(rule, dict):
-                    rule.setdefault("apk_package", metadata.get("package_name", "unknown"))
-
-        self.logger.info(f"[~] Enriched risk_band in {enriched}/{len(reports)} reports.")
-        success = self.report_saver._save_json(path, reports, label="Combined report")
-        if not success:
-            self.logger.error("[✗] Failed to save combined JSON report")
-
-    def _save_yara_summary(self, reports: List[Dict[str, Any]]) -> None:
-        summary: Dict[str, Dict[str, List[Dict[str, Any]]]] = {}
-
-        for report in reports:
-            package = report.get("apk_metadata", {}).get("package_name", report.get("package", "unknown"))
-            raw_matches = report.get("yara_matches", [])
-            models = ensure_yara_models(raw_matches)
-
-            category_groups = defaultdict(list)
-            for match in models:
-                category = match.meta.get("category", "uncategorized")
-                entry = {
-                    "rule": match.rule,
-                    "category": category,
-                    "severity": match.meta.get("severity", "medium"),
-                    "confidence": match.meta.get("confidence", ""),
-                    "tags": match.tags,
-                    "file": match.file,
-                }
-                category_groups[category].append(entry)
-
-            summary[package] = dict(category_groups)
-
-        path = self.run_dir / "yara_results.json"
-        success = self.report_saver._save_json(path, summary, label="YARA summary")
-        if not success:
-            self.logger.error("[✗] Failed to save grouped YARA summary")
+            report["risk_band"] = report.get("classification", {}).get("cvss_risk_band", "unknown")
+            analyzed_at = report.get("apk_metadata", {}).get("analyzed_at")
+            if isinstance(analyzed_at, datetime):
+                report["apk_metadata"]["analyzed_at"] = analyzed_at.isoformat()
+        if not self.report_saver._save_json(path, reports, "Combined report"):
+            self.logger.error("[✗] Failed saving combined_report.json")
 
     def _save_summary_outputs(self, summaries: List[ApkSummary]) -> None:
         json_path = self.run_dir / "combined_summary.json"
         csv_path = self.run_dir / "combined_summary.csv"
-
-        success_json = self.report_saver._save_json(json_path, [s.to_dict() for s in summaries], label="Summary JSON")
-        if not success_json:
-            self.logger.error("[✗] Failed to save summary JSON")
-
+        self.report_saver._save_json(json_path, [s.to_dict() for s in summaries], "Combined summary JSON")
         try:
             ApkSummaryBuilder.export_csv(summaries, csv_path)
-            self.logger.info(f"[✓] CSV summary saved to: {csv_path.resolve()}")
         except Exception as ex:
-            self.logger.error(f"[✗] Failed to save summary CSV: {ex}")
+            self.logger.error(f"[✗] CSV export failed: {ex}")
 
-    def generate_tag_pie_chart(self, reports: List[Dict[str, Any]]) -> Optional[Path]:
-        tag_counter = Counter()
-        for report in reports:
-            for match in report.get("yara_matches", []):
-                tags = match.get("tags", []) if isinstance(match, dict) else getattr(match, "tags", [])
-                tag_counter.update([t.lower() for t in tags])
+    def _save_per_apk_outputs(self, report: Dict[str, Any], summary: ApkSummary, apk_dir: Path) -> None:
+        pkg = summary.apk_package or "unknown"
 
-        output_path = self.run_dir / "yara_tag_pie.png"
-        return self._generate_tag_pie_chart(tag_counter, "YARA Tag Distribution", output_path)
+        # Save raw report
+        self.report_saver.save_report(report)
 
-    def _save_per_apk_yara_results(self, report: Dict[str, Any], package: str) -> None:
-        raw_matches = report.get("yara_matches", [])
-        models = ensure_yara_models(raw_matches)
+        # Save categorized YARA JSON
+        self._save_yara_json(report, apk_dir, pkg)
 
-        category_groups = defaultdict(list)
-        for match in models:
-            category = match.meta.get("category", "uncategorized")
-            entry = {
-                "rule": match.rule,
-                "category": category,
-                "severity": match.meta.get("severity", "medium"),
-                "confidence": match.meta.get("confidence", ""),
-                "tags": match.tags,
-                "file": match.file,
-            }
-            category_groups[category].append(entry)
+        # Save YARA tag pie chart
+        self._save_tag_pie(report, apk_dir, pkg)
 
-        out_path = self.run_dir / f"{package}_yara_results.json"
-        self.report_saver._save_json(out_path, dict(category_groups), label=f"YARA results for {package}")
+        # Save stacked charts
+        self._save_stacked_charts(report, apk_dir, pkg)
 
-    def _save_per_apk_tag_pie(self, report: Dict[str, Any], package: str) -> None:
-        tag_counter = Counter()
-        for match in report.get("yara_matches", []):
-            tags = match.get("tags", []) if isinstance(match, dict) else getattr(match, "tags", [])
-            tag_counter.update([t.lower() for t in tags])
+        # Save risk breakdown
+        generate_risk_breakdown_chart(summary, apk_dir)
 
-        output_path = self.run_dir / f"{package}_yara_tag_pie.png"
-        self._generate_tag_pie_chart(tag_counter, f"YARA Tags: {package}", output_path)
+        # Save summary CSV (optional)
+        yara_models = ensure_yara_models(report.get("yara_matches", []))
+        self.report_saver.save_yara_csv(pkg, yara_models)
 
-    def _save_per_apk_stacked_charts(self, report: Dict[str, Any], package: str) -> None:
-        rows = self._extract_yara_chart_rows(report)
-        if not rows:
-            self.logger.warning(f"[~] No YARA metadata to generate stacked charts for {package}")
-            return
+        # Generate dashboard HTML
+        generate_per_apk_dashboard(summary, apk_dir, apk_dir / "report.json")
 
-        generate_stacked_chart(
-            reports=[report],
-            index_field="malware_family",
-            column_field="category",
-            title=f"Malware Family vs Category: {package}",
-            filename=f"{package}_stacked_family_chart.png",
-            run_dir=self.run_dir
-        )
-
-        generate_stacked_chart(
-            reports=[report],
-            index_field="severity",
-            column_field="category",
-            title=f"Severity vs Category: {package}",
-            filename=f"{package}_stacked_severity_chart.png",
-            run_dir=self.run_dir
-        )
-
-    def _extract_yara_chart_rows(self, report: Dict[str, Any]) -> List[Dict[str, str]]:
-        rows = []
-        yara_matches = report.get("yara_matches", [])
-        for match in yara_matches:
-            meta = match.get("meta", {})
-            rows.append({
-                "malware_family": str(meta.get("malware_family", "unknown")).lower(),
-                "severity": str(meta.get("severity", "unknown")).lower(),
-                "category": str(meta.get("category", "uncategorized")).lower()
+    def _save_yara_json(self, report: Dict[str, Any], apk_dir: Path, pkg: str) -> None:
+        models = ensure_yara_models(report.get("yara_matches", []))
+        grouped = defaultdict(list)
+        for m in models:
+            grouped[m.meta.get("category", "uncategorized")].append({
+                "rule": m.rule,
+                "severity": m.meta.get("severity", "medium"),
+                "confidence": m.meta.get("confidence", ""),
+                "tags": m.tags,
+                "file": m.file,
             })
-        return rows
+        self.report_saver._save_json(apk_dir / "yara_results.json", grouped, f"YARA results for {pkg}")
 
-    def _generate_tag_pie_chart(self, tag_counter: Counter, title: str, output_path: Path) -> Optional[Path]:
-        if not tag_counter:
-            self.logger.warning(f"[~] No tags found for pie chart: {title}")
-            return None
+    def _save_tag_pie(self, report: Dict[str, Any], apk_dir: Path, pkg: str) -> None:
+        tags = Counter(
+            tag.lower()
+            for match in report.get("yara_matches", [])
+            for tag in (match.get("tags", []) if isinstance(match, dict) else getattr(match, "tags", []))
+        )
+        generate_tag_pie_chart(tags, f"{pkg} — YARA Tags", apk_dir / "yara_tag_pie.png")
 
-        top_tags = tag_counter.most_common(8)
-        labels, sizes = zip(*top_tags)
+    def _save_stacked_charts(self, report: Dict[str, Any], apk_dir: Path, pkg: str) -> None:
+        if not report.get("yara_matches"):
+            return
+        generate_stacked_chart([report], "malware_family", "category",
+                               f"{pkg} — Family vs Category", "stacked_family.png", apk_dir)
+        generate_stacked_chart([report], "severity", "category",
+                               f"{pkg} — Severity vs Category", "stacked_severity.png", apk_dir)
 
-        fig, ax = plt.subplots()
-        ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=140)
-        ax.set_title(title)
-        ax.axis("equal")
-
-        fig.savefig(output_path, bbox_inches="tight")
-        plt.close(fig)
-
-        self.logger.info(f"[✓] Saved pie chart: {output_path.resolve()}")
-        return output_path
+    def _generate_heatmap(self, reports: List[Dict[str, Any]]) -> None:
+        all_events = [e for r in reports for e in r.get("events", [])]
+        if not all_events:
+            self.logger.warning("[~] No dynamic events for heatmap.")
+            return
+        heatmap_path = self.run_dir / "tag_heatmap.html"
+        visualize_tag_heatmap(all_events, str(heatmap_path))

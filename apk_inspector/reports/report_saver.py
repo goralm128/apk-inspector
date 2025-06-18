@@ -6,6 +6,7 @@ from collections import defaultdict
 import pandas as pd
 from apk_inspector.reports.schemas import YaraMatchModel
 from apk_inspector.utils.logger import get_logger
+import re
 
 
 def make_json_safe(obj: Any) -> Any:
@@ -17,52 +18,44 @@ def make_json_safe(obj: Any) -> Any:
         return obj.isoformat()
     elif isinstance(obj, Path):
         return str(obj)
-    else:
-        return obj
+    return obj
+
+
+def sanitize_filename(name: str) -> str:
+    return re.sub(r"[^\w\-_.]", "_", name)
 
 
 class ReportSaver:
-    """
-    Handles saving, merging, clearing, and reading JSON reports for APK analysis.
-    Automatically creates timestamped output folders and logging.
-    """
-
     def __init__(self, run_dir: Path):
         self.run_dir = run_dir
         self.output_root = run_dir.parent
         self.timestamp = run_dir.name
         self.logger = get_logger()
-
         self.run_dir.mkdir(parents=True, exist_ok=True)
 
-    def get_hook_result_path(self, package_name: str, hook_name: str) -> Path:
-        return self.run_dir / f"{package_name}_{hook_name}.json"
+    def get_apk_dir(self, package_name: str) -> Path:
+        safe_name = sanitize_filename(package_name)
+        apk_dir = self.run_dir / safe_name
+        apk_dir.mkdir(parents=True, exist_ok=True)
+        return apk_dir
 
     def _save_json(self, path: Path, data: Any, label: str) -> bool:
         try:
-            safe_data = make_json_safe(data)
+            path.parent.mkdir(parents=True, exist_ok=True)
             with path.open("w", encoding="utf-8") as f:
-                json.dump(safe_data, f, indent=2, ensure_ascii=False)
+                json.dump(make_json_safe(data), f, indent=2, ensure_ascii=False)
             self.logger.info(f"[✓] {label} written to {path.resolve()}")
             return True
-
         except Exception as ex:
             self.logger.error(f"[✗] Failed to write {label}: {ex}")
-            try:
-                if isinstance(data, list):
-                    for idx, item in enumerate(data):
-                        if not isinstance(item, dict):
-                            self.logger.debug(f"[Debug] Unserializable item at index {idx}: {type(item)}")
-                elif not isinstance(data, dict):
-                    self.logger.debug(f"[Debug] Top-level data type: {type(data)}")
-            except Exception as dbg:
-                self.logger.debug(f"[Debug] Type inspection failed: {dbg}")
             return False
 
     def save_report(self, report: Dict[str, Any]) -> Path:
-        output_path = self.run_dir / f"{report['apk_metadata']['package_name']}.json"
-        self._save_json(output_path, report, f"Report for {report['apk_metadata']['package_name']}")
-        return output_path
+        pkg = report["apk_metadata"]["package_name"]
+        apk_dir = self.get_apk_dir(pkg)
+        path = apk_dir / "report.json"
+        self._save_json(path, report, f"Report for {pkg}")
+        return path
 
     def save_yara_csv(self, package_name: str, matches: List[YaraMatchModel]) -> Optional[Path]:
         if not matches:
@@ -70,68 +63,29 @@ class ReportSaver:
             return None
 
         grouped = defaultdict(lambda: {
-            "package": package_name,
-            "rule": "",
-            "category": "",
-            "severity": "",
-            "confidence": "",
-            "tags": "",
-            "file": "",
-            "match_count": 0
+            "package": package_name, "rule": "", "category": "",
+            "severity": "", "confidence": "", "tags": "", "file": "", "match_count": 0
         })
 
-        for match in matches:
-            key = (match.rule, match.meta.get("category", "uncategorized"), match.file)
-            group = grouped[key]
-            group["rule"] = match.rule
-            group["category"] = match.meta.get("category", "uncategorized")
-            group["severity"] = match.meta.get("severity", "medium")
-            group["confidence"] = match.meta.get("confidence", "")
-            group["tags"] = ", ".join(match.tags)
-            group["file"] = match.file
-            group["match_count"] += 1
+        for m in matches:
+            key = (m.rule, m.meta.get("category", "uncategorized"), m.file)
+            grp = grouped[key]
+            grp.update({
+                "rule": m.rule,
+                "category": m.meta.get("category", "uncategorized"),
+                "severity": m.meta.get("severity", "medium"),
+                "confidence": m.meta.get("confidence", ""),
+                "tags": ", ".join(m.tags),
+                "file": m.file,
+            })
+            grp["match_count"] += 1
 
         df = pd.DataFrame(list(grouped.values()))
-        csv_path = self.run_dir / f"{package_name}_yara_summary.csv"
-
+        path = self.get_apk_dir(package_name) / "yara_summary.csv"
         try:
-            df.to_csv(csv_path, index=False)
-            self.logger.info(f"[✓] Saved enriched YARA summary CSV to: {csv_path.resolve()}")
-            return csv_path
+            df.to_csv(path, index=False)
+            self.logger.info(f"[✓] Saved YARA CSV: {path.resolve()}")
+            return path
         except Exception as ex:
-            self.logger.error(f"[✗] Failed to save enriched YARA summary CSV: {ex}")
+            self.logger.error(f"[✗] Failed to save YARA CSV: {ex}")
             return None
-
-    def save_yara_summary_json(self, results: List[Dict[str, Any]]):
-        summary = {
-            r.get("apk_metadata", {}).get("package_name", r.get("package", "unknown")):
-            sorted([m.rule if hasattr(m, "rule") else "unknown" for m in r.get("yara_matches", [])])
-            for r in results if "package" in r or "apk_metadata" in r
-        }
-        summary_path = self.run_dir / "yara_results.json"
-        self._save_json(summary_path, summary, "YARA summary")
-
-    def read_existing_results(self, file_path: Path) -> List[Dict[str, Any]]:
-        if file_path.exists():
-            try:
-                with file_path.open("r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception as ex:
-                self.logger.warning(f"[!] Failed to read existing results from {file_path}: {ex}")
-        return []
-
-    def write_merged_results(self, file_path: Path, new_results: List[Dict[str, Any]]) -> None:
-        file_path.parent.mkdir(parents=True, exist_ok=True)
-        existing = self.read_existing_results(file_path)
-        merged = {r["package"]: r for r in existing}
-        for res in new_results:
-            merged[res["package"]] = res
-        self._save_json(file_path, list(merged.values()), "Merged results")
-
-    def clear_output_file(self, file_path: Path) -> None:
-        if file_path.exists():
-            try:
-                file_path.unlink()
-                self.logger.info(f"[~] Cleared existing results file: {file_path}")
-            except Exception as ex:
-                self.logger.warning(f"[!] Unable to delete output file: {ex}")

@@ -1,49 +1,61 @@
 # -----------------------------------------------------------------------------
-# APK Inspector Git Ignore
+# APK Inspector - .gitignore
 # -----------------------------------------------------------------------------
 
-# Android APK files
+# === Android APK files ===
 apks/**/*.apk
-!apks/.gitkeep
+!apks/.gitkeep  # Keep empty apks directory
 
-# Output / reports / generated files
+# === Output / Reports / Generated Files ===
 output/
-!output/.gitkeep
+!output/.gitkeep  # Keep empty output directory
 
-# Python cache and compiled bytecode
+# === Per-APK folders inside output (optional, handled dynamically) ===
+output/*/
+output/*/**
+
+# === Python cache & compiled files ===
 __pycache__/
 *.py[cod]
 *.pyo
 
-# Testing artifacts
+# === Testing & Coverage ===
 .coverage
 .pytest_cache/
 htmlcov/
 .cache/
 
-# Virtual environments (local only)
+# === Type-checking and static analysis ===
+.mypy_cache/
+.ruff_cache/
+.pylint.d/
+
+# === Virtual Environments ===
 venv/
 .venv/
 .env/
-venv310/
+venv310/  # Specific to this project
 
-# Build system artifacts
+# === Build system artifacts ===
 *.egg-info/
 *.egg
 build/
 dist/
 
-# Frida logs and temp files
+# === Logs & temporary files ===
 *.log
 *.tmp
+logs/
+!logs/.gitkeep  # Keep empty logs directory
 
-# IDE & editor settings
+# === Editor / IDE configuration ===
 .vscode/
 .idea/
 
-# Jupyter Notebook
+# === Jupyter Notebook ===
 *.ipynb_checkpoints/
 
-# OS-specific junk
+# === OS-specific junk ===
 .DS_Store
 Thumbs.db
+venv310/
