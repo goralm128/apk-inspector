@@ -1,61 +1,72 @@
+import json
+import re
 from pathlib import Path
 from typing import List
-import re
-import json
 
 def extract_metadata(code: str) -> dict:
-    """Extract metadata object from JavaScript source if defined."""
-    match = re.search(r"const\s+metadata\s*=\s*{.*?}", code, re.DOTALL)
-    if match:
-        obj_str = match.group(0).split("=", 1)[-1].strip().rstrip(";")
-        try:
-            # Replace JS-style keys without quotes with JSON-compatible format
-            json_like = re.sub(r"(\w+):", r'"\1":', obj_str)
-            return json.loads(json_like)
-        except Exception:
-            return {}
-    return {}
+    """Extracts metadata object from a JS script, converting JS-like to JSON."""
+    match = re.search(r"\bconst\s+metadata\s*=\s*({.*?})", code, re.DOTALL)
+    if not match:
+        return {}
+    try:
+        obj = match.group(1)
+        # Fix keys without quotes: `key: value` → `"key": value`
+        obj = re.sub(r'(\w+)\s*:', r'"\1":', obj)
+        # Fix single to double quotes for strings
+        obj = re.sub(r"'", r'"', obj)
+        return json.loads(obj)
+    except Exception:
+        return {}
 
 def validate_hook_script(script_path: Path) -> List[str]:
+    """Validates a Frida JavaScript hook for completeness and compliance."""
     issues = []
+
     try:
         code = script_path.read_text(encoding="utf-8")
     except Exception as ex:
         return [f"Failed to read script: {ex}"]
 
-    stripped_code = code.strip()
-    if not stripped_code:
+    code = code.strip()
+    if not code:
         return ["Script is empty."]
 
     metadata = extract_metadata(code)
     entrypoint = metadata.get("entrypoint", "").strip().lower()
 
-    # Validate entrypoint classification
-    uses_java = any(kw in code for kw in ["Java.use(", "Java.perform(", "runWhenJavaIsReady("])
+    uses_java = any(kw in code for kw in [
+        "Java.use(", "Java.perform(", "runWhenJavaIsReady(", "maybeRunJavaHook("])
     uses_native = "Interceptor.attach(" in code or "safeAttach(" in code
 
+    # ─── Metadata checks ───
     if not entrypoint:
         issues.append("Missing 'entrypoint' in metadata.")
 
     if entrypoint == "java" and not uses_java:
-        issues.append("Metadata entrypoint is 'java' but no Java APIs found.")
+        issues.append("Metadata entrypoint is 'java' but no Java APIs used.")
 
     if entrypoint == "native" and not uses_native:
-        issues.append("Metadata entrypoint is 'native' but no native hooks (e.g. Interceptor.attach) found.")
+        issues.append("Metadata entrypoint is 'native' but no native APIs used.")
 
     if not uses_java and not uses_native:
-        issues.append("Missing Frida entrypoint (Interceptor.attach or Java.perform or runWhenJavaIsReady).")
+        issues.append("No Frida hooking logic found.")
 
-    if "send(" not in code and "createHookLogger" not in code:
-        issues.append("No call to send() or usage of createHookLogger — no events will be emitted.")
+    # ─── Emission logic ───
+    emits_events = any(
+        token in code
+        for token in ["send(", "createHookLogger", "waitForLogger", "sendEvent", "log("]
+    )
+    if not emits_events:
+        issues.append("No call to send() or logger — no events will be emitted.")
 
-    if "hook:" not in code and "hook : " not in code:
-        issues.append("No `hook:` field in log payloads. Events may be uncategorized.")
+    if not re.search(r"\bhook\b\s*[:=]", code):
+        issues.append("No `hook:` field defined in payloads — events may be uncategorized.")
 
+    # ─── Anti-patterns ───
     if "module.exports" in code:
-        issues.append("Contains Node.js syntax `module.exports`.")
+        issues.append("Contains Node.js export syntax.")
 
     if "require(" in code:
-        issues.append("Contains Node.js-like `require()`.")
+        issues.append("Contains Node.js require() call.")
 
     return issues

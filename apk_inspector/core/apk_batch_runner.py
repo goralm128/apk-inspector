@@ -48,24 +48,29 @@ class APKBatchRunner:
         self.logger.info(f"[✓] Analysis complete: {len(valid_results)}/{len(self.apk_paths)} valid results stored.")
 
     def _run_serial(self) -> List[Tuple[Dict[str, Any], ApkSummary]]:
-            results = []
-            for apk_path in self.apk_paths:
-                try:
-                    full_report, summary = analyze_apk_and_summarize(
-                        apk_path,
-                        hooks_dir=self.hooks_dir,
-                        run_dir=self.report_manager.run_dir,
-                        verbose=True,
-                        timeout=self.timeout
-                    )
-                    #  Save individual full report
-                    self.report_saver.save_report(full_report)
+        results = []
+        for apk_path in self.apk_paths:
+            try:
+                full_report, summary = analyze_apk_and_summarize(
+                    apk_path,
+                    hooks_dir=self.hooks_dir,
+                    run_dir=self.report_manager.run_dir,
+                    verbose=True,
+                    timeout=self.timeout
+                )
+                #  Save individual full report
+                self.report_saver.save_report(full_report)
 
-                    results.append((full_report, summary))
-                except Exception as ex:
-                    self.logger.error(f"[✗] Analysis failed for {apk_path.name}: {ex}")
-                    
-            return results        
+                results.append((full_report, summary))
+                # Force GC and Frida shutdown
+                import gc, frida
+                gc.collect()
+                frida.shutdown()
+                
+            except Exception as ex:
+                self.logger.error(f"[✗] Analysis failed for {apk_path.name}: {ex}")
+                
+        return results        
 
     def _run_parallel(self) -> List[Tuple[Dict[str, Any], ApkSummary]]:
 

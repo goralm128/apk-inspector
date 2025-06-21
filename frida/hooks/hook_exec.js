@@ -24,46 +24,59 @@
     }
   };
 
+  const get_native_stack = (ctx) => {
+    try {
+      return Thread.backtrace(ctx, Backtracer.ACCURATE)
+        .map(DebugSymbol.fromAddress)
+        .map(sym => `${sym.moduleName || "?"}!${sym.name || "?"}@${sym.address}`)
+        .join("\n");
+    } catch (_) {
+      return "N/A";
+    }
+  };
+
   try {
     const log = await waitForLogger(metadata);
 
     for (const fn of execFunctions) {
+      // Destructure values to avoid closure issues
+      const { name: fnName, args: argIndices, module } = fn;
+
       try {
-        await safeAttach(fn.name, {
+        await safeAttach(fnName, {
           onEnter(args) {
-            try {
-              const argMap = {};
-              fn.args.forEach(i => {
-                argMap[`arg${i}`] = tryReadCString(args[i]);
-              });
+            const argMap = {};
+            argIndices.forEach(i => {
+              argMap[`arg${i}`] = tryReadCString(args[i]);
+            });
 
-              log({
-                action: fn.name,
-                args: argMap,
-                module: fn.module,
-                thread: get_thread_name(),
-                stack: get_java_stack(),
-                tags: ["native", "exec_call"]
-              });
+            const evt = buildEvent({
+              metadata,
+              action: fnName,
+              context: {
+                module,
+                stack: get_native_stack(this.context)
+              },
+              args: argMap
+            });
 
-              console.log(`[hook_exec] ${fn.name} called:`, JSON.stringify(argMap));
-            } catch (err) {
-              console.error(`[hook_exec] Logging failed for ${fn.name}: ${err}`);
-            }
+            log(evt);
+            console.log(`[hook_exec] ${fnName} called:`, JSON.stringify(argMap));
           }
-        }, fn.module, {
+        }, module, {
           maxRetries: 10,
           retryInterval: 300,
           verbose: true
         });
 
-        console.log(`[hook_exec] Hooked ${fn.name}`);
+        console.log(`[hook_exec] Hooked ${fnName}`);
       } catch (err) {
-        console.error(`[hook_exec] Failed to attach ${fn.name}: ${err}`);
+        console.error(`[hook_exec] Failed to attach ${fnName}: ${err}`);
       }
     }
 
-    send({ type: 'hook_loaded', hook: metadata.name, java: false });
+    log(buildEvent({ metadata, action: "hook_loaded" }));
+    send({ type: 'hook_loaded', hook: metadata.name });
     console.log(`[+] ${metadata.name} initialized`);
 
   } catch (e) {

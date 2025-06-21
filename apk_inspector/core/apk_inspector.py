@@ -76,6 +76,13 @@ class APKInspector:
                 # Add more
             }
             tag_inferencer = TagInferencer(tag_rules)
+            
+            # Build APK metadata once per run
+            apk_metadata = {
+                "package_name": package_name,
+                "apk_name": self.apk_path.name,
+                "apk_path": str(self.apk_path),               
+            }
 
             dynamic_analyzer = DynamicAnalyzer(
                 hooks_dir=self.hooks_dir,
@@ -85,9 +92,12 @@ class APKInspector:
                 run_dir=self.run_dir,
                 timeout=self.timeout
             )
-            events = dynamic_analyzer.analyze(package_name)
+            dyn_res = dynamic_analyzer.analyze(package_name, apk_metadata=apk_metadata)
+            events = dyn_res.get("events", [])
+            hook_cov = dyn_res.get("hook_coverage", {})
+            hook_counts = dyn_res.get("hook_event_counts", {})
             self.logger.info(f"[{package_name}] Dynamic analysis collected {len(events)} events.")
-
+            
             verdict = self.rule_engine.evaluate(
                 events=events,
                 yara_hits=[m.model_dump() for m in yara_models],
@@ -97,8 +107,11 @@ class APKInspector:
             self._log_verdict(package_name, verdict, events, raw_yara_matches, static_info)
 
             self.report_builder.set_static_analysis(yara_models, static_info)
+            
             self.report_builder.merge_hook_result({
-                "events": events,
+               "events": events,
+                "hook_coverage": hook_cov,
+                "hook_event_counts": hook_counts,
                 "verdict": verdict
             })
 

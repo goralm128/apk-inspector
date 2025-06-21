@@ -2,142 +2,94 @@
 
 (async function () {
   const metadata = {
-    name: "hook_native_sensitive",
-    description: "Monitors native calls to ptrace, getenv, fgets, kill for anti-debug and evasion tactics",
-    category: "native_sensitive",
-    tags: ["native", "anti_debug", "env_check", "sensitive_read"],
+    name: 'hook_native_sensitive',
+    category: 'native_calls',
+    description: 'Hooks sensitive native functions such as system, execve, dlopen, etc.',
+    tags: ['native', 'libc', 'dangerous', 'execution'],
     sensitive: true,
-    entrypoint: "native"
+    entrypoint: 'native'
   };
 
-  function tryReadCString(ptr) {
+  const sensitiveFunctions = [
+    'system', 'execve', 'popen', 'fork', 'vfork',
+    'execl', 'execlp', 'execle', 'execv', 'execvp', 'execvpe', 'dlopen'
+  ];
+
+  const safeReadCString = (ptr) => {
     try {
       return ptr.readCString();
     } catch (_) {
-      return "<unreadable>";
+      return '<unreadable>';
     }
-  }
+  };
 
-  function formatBacktrace(ctx) {
+  const formatBacktrace = (ctx) => {
     try {
       return Thread.backtrace(ctx, Backtracer.ACCURATE)
         .map(DebugSymbol.fromAddress)
-        .map(sym => `${sym.moduleName || "?"}!${sym.name || "?"} @ ${sym.address}`);
+        .map(sym => `${sym.moduleName || '?'}!${sym.name || '?'}@${sym.address}`);
     } catch (_) {
-      return ["<no backtrace>"];
+      return ['<no backtrace>'];
     }
-  }
+  };
 
   try {
     const log = await waitForLogger(metadata);
+    console.log(`[${metadata.name}] Installing ${sensitiveFunctions.length} native hooks...`);
 
-    const hooks = [
-      {
-        name: "ptrace",
-        module: "libc.so",
+    const hookFunction = async (fnName) => {
+      await safeAttach(fnName, {
         onEnter(args) {
-          this.request = args[0]?.toInt32?.();
-          this.pid = args[1]?.toInt32?.();
-        },
-        onLeave() {
-          log({
-            action: "ptrace",
-            request: this.request,
-            pid: this.pid,
-            anti_debug: true,
-            tags: ["anti_debug"],
-            thread: get_thread_name(),
-            threadId: Process.getCurrentThreadId(),
-            processId: Process.id,
-            stack: formatBacktrace(this.context)
-          });
-        }
-      },
-      {
-        name: "getenv",
-        module: "libc.so",
-        onEnter(args) {
-          this.key = tryReadCString(args[0]);
-        },
-        onLeave(retval) {
-          log({
-            action: "getenv",
-            key: this.key,
-            value: retval.isNull() ? "<null>" : tryReadCString(retval),
-            env_check: true,
-            tags: ["env_check"],
-            thread: get_thread_name(),
-            threadId: Process.getCurrentThreadId(),
-            processId: Process.id,
-            stack: formatBacktrace(this.context)
-          });
-        }
-      },
-      {
-        name: "fgets",
-        module: "libc.so",
-        onEnter(args) {
-          this.buf = args[0];
-        },
-        onLeave() {
-          try {
-            const content = tryReadCString(this.buf);
-            log({
-              action: "fgets",
-              content,
-              sensitive_read: true,
-              tags: ["sensitive_read"],
-              thread: get_thread_name(),
-              threadId: Process.getCurrentThreadId(),
-              processId: Process.id,
+          const caller = DebugSymbol.fromAddress(this.returnAddress) || {};
+          const mod = caller.moduleName || 'unknown';
+          const sym = caller.name || 'unknown';
+
+          const isExecLike = ['system', 'popen'].includes(fnName) || fnName.startsWith('exec');
+          const cmd = isExecLike ? safeReadCString(args[0]) : null;
+
+          const event = buildEvent({
+            metadata,
+            action: fnName,
+            context: {
+              module: mod,
+              symbol: sym,
+              address: this.context?.pc,
               stack: formatBacktrace(this.context)
-            });
-          } catch (_) {
-            // Unreadable buffer
+            },
+            args: {
+              function: fnName,
+              ...(cmd ? { command: cmd } : {})
+            },
+            suspicious: true
+          });
+
+          log(event);
+          if (cmd) {
+            console.log(`[${metadata.name}] ${fnName}("${cmd}") ← ${sym}`);
+          } else {
+            console.log(`[${metadata.name}] ${fnName}() ← ${sym}`);
           }
         }
-      },
-      {
-        name: "kill",
-        module: "libc.so",
-        onEnter(args) {
-          this.pid = args[0]?.toInt32?.();
-          this.sig = args[1]?.toInt32?.();
-        },
-        onLeave() {
-          const suspicious = this.sig === 9 || this.sig === 11;
-          log({
-            action: "kill",
-            pid: this.pid,
-            signal: this.sig,
-            anti_debug: suspicious,
-            tags: suspicious ? ["anti_debug"] : ["kill"],
-            thread: get_thread_name(),
-            threadId: Process.getCurrentThreadId(),
-            processId: Process.id,
-            stack: formatBacktrace(this.context)
-          });
-        }
-      }
-    ];
+      }, null, {
+        maxRetries: 10,
+        retryInterval: 250,
+        verbose: true
+      }).then(() => {
+        console.log(`[${metadata.name}] Hooked ${fnName}`);
+      }).catch(err => {
+        console.error(`[${metadata.name}] Failed to hook ${fnName}: ${err}`);
+      });
+    };
 
-    for (const { name, module, onEnter, onLeave } of hooks) {
-      try {
-        await safeAttach(name, { onEnter, onLeave }, module, {
-          maxRetries: 8,
-          retryInterval: 250,
-          verbose: true
-        });
-        console.log(`[hook_native_sensitive] Hooked ${name}`);
-      } catch (err) {
-        console.error(`[hook_native_sensitive] Failed to hook ${name}: ${err}`);
-      }
+    for (const fn of sensitiveFunctions) {
+      await hookFunction(fn);
     }
 
-    send({ type: 'hook_loaded', hook: metadata.name, java: false });
-    console.log(`[+] ${metadata.name} initialized`);
+    log(buildEvent({ metadata, action: 'hook_loaded'}));
+    send({ type: 'hook_loaded', hook: metadata.name });
 
+    console.log(`[+] ${metadata.name} initialized`);
   } catch (e) {
-    console.error(`[hook_native_sensitive] Logger setup failed: ${e}`);
+    console.error(`[${metadata.name}] Setup failed: ${e}`);
   }
 })();

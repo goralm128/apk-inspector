@@ -85,3 +85,5 @@ def wait_for_process(device, package: str, timeout: int = 20, interval: float = 
         logger.error(f"[wait_for_process] {message}")
     raise frida.ProcessNotFoundError(message)
 
+
+

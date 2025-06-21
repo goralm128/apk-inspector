@@ -10,28 +10,26 @@
     entrypoint: "native"
   };
 
-  function resolveFdPath(fd) {
+  const resolveFdPath = (fd) => {
     try {
       const link = `/proc/${Process.id}/fd/${fd}`;
       return new File(link, "r").readlink();
     } catch (_) {
       return "<unknown>";
     }
-  }
+  };
 
-  function captureBufferHash(ptr, length) {
+  const captureBufferHash = (ptr, length) => {
     try {
       if (length > 0 && length <= 2048) {
         const bytes = Memory.readByteArray(ptr, length);
         return Crypto.digest("sha1", bytes, { encoding: "hex" });
       }
-    } catch (_) {
-      return "<unreadable>";
-    }
+    } catch (_) {}
     return null;
-  }
+  };
 
-  function formatBacktrace(ctx) {
+  const formatBacktrace = (ctx) => {
     try {
       return Thread.backtrace(ctx, Backtracer.ACCURATE)
         .map(DebugSymbol.fromAddress)
@@ -39,65 +37,62 @@
     } catch (_) {
       return ["<no backtrace>"];
     }
-  }
+  };
 
   try {
     const log = await waitForLogger(metadata);
-    const functions = ["read", "write"];
 
-    for (const name of functions) {
-      try {
-        await safeAttach(name, {
-          onEnter(args) {
-            this.name = name;
-            this.fd = args[0]?.toInt32?.() ?? -1;
-            this.buf = args[1];
-            this.len = args[2]?.toInt32?.() ?? 0;
-            this.path = resolveFdPath(this.fd);
-            this.context = this.context;
-          },
-          onLeave(retval) {
-            const bytes = retval?.toInt32?.() ?? -1;
-            const suspicious = this.len > 4096 || /proc|cache|tmp|su|sh/i.test(this.path);
+    const hookReadOrWrite = async (fnName) => {
+      await safeAttach(fnName, {
+        onEnter(args) {
+          this.fnName = fnName;
+          this.fd = args?.[0]?.toInt32?.() ?? -1;
+          this.buf = args?.[1];
+          this.len = args?.[2]?.toInt32?.() ?? 0;
+          this.path = resolveFdPath(this.fd);
+          this.ctx = this.context;
+        },
+        onLeave(retval) {
+          const bytes = retval?.toInt32?.() ?? -1;
+          const suspicious = this.len > 4096 || /proc|cache|tmp|su|sh/i.test(this.path);
+          const hash = (bytes > 0 && bytes <= 2048)
+            ? captureBufferHash(this.buf, bytes)
+            : undefined;
 
-            const event = {
-              action: this.name,
-              direction: this.name === "write" ? "outbound" : "inbound",
+          log(buildEvent({
+            metadata,
+            action: this.fnName,
+            context: { stack: formatBacktrace(this.ctx) },
+            args: {
+              direction: this.fnName === "write" ? "outbound" : "inbound",
               fd: this.fd,
               file_path: this.path,
               bytes,
               error: bytes < 0,
               suspicious,
-              thread: get_thread_name(),
-              threadId: Process.getCurrentThreadId(),
-              processId: Process.id,
-              stack: formatBacktrace(this.context),
-              tags: ["fs"].concat(suspicious ? ["suspicious_path"] : [])
-            };
+              buffer_sha1: hash
+            },
+            tags: suspicious ? metadata.tags.concat("suspicious_path") : metadata.tags
+          }));
 
-            if (bytes > 0 && bytes <= 2048) {
-              event.buffer_sha1 = captureBufferHash(this.buf, bytes);
-            }
+          console.log(`[hook_io_fs] ${this.fnName}(${this.fd}) → ${bytes} bytes @ ${this.path}`);
+        }
+      }, null, {
+        maxRetries: 10,
+        retryInterval: 250,
+        verbose: true
+      });
 
-            console.log(`[hook_io_fs] ${this.name}(${this.fd}) → ${bytes} bytes @ ${this.path}`);
-            log(event);
-          }
-        }, null, {
-          maxRetries: 10,
-          retryInterval: 250,
-          verbose: true
-        });
+      console.log(`[hook_io_fs] Hooked ${fnName}`);
+    };
 
-        console.log(`[hook_io_fs] Hooked ${name}`);
-      } catch (err) {
-        console.error(`[hook_io_fs] Failed to hook ${name}: ${err}`);
-      }
-    }
+    await hookReadOrWrite("read");
+    await hookReadOrWrite("write");
 
-    send({ type: 'hook_loaded', hook: metadata.name, java: false });
+    log(buildEvent({ metadata, action: "hook_loaded" }));
+    send({ type: 'hook_loaded', hook: metadata.name });
     console.log(`[+] ${metadata.name} initialized`);
-
   } catch (err) {
-    console.error(`[hook_io_fs] Logger setup failed: ${err}`);
+    console.error(`[hook_io_fs] Initialization failed: ${err}`);
   }
 })();

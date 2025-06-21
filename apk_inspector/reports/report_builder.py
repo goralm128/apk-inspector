@@ -26,6 +26,7 @@ class APKReportBuilder:
         self.yara_matches: List[YaraMatchModel] = []
         self.static_analysis: Dict[str, Any] = {}
         self.hook_coverage: Dict[str, int] = {}
+        self.hook_event_counts: Dict[str, int] = {}
         self.triggered_rule_results: List[TriggeredRuleResult] = []
 
     def merge_hook_result(self, hook_result: Dict[str, Any]):
@@ -40,6 +41,7 @@ class APKReportBuilder:
                 logger.warning(f"[{self.package}] Failed to parse event: {ex}")
 
         self.hook_coverage = hook_result.get("hook_coverage", {})
+        self.hook_event_counts = hook_result.get("hook_event_counts", {})
         verdict = hook_result.get("verdict")
         if isinstance(verdict, Verdict):
             self.verdict = verdict
@@ -104,6 +106,7 @@ class APKReportBuilder:
             },
             "triggered_rule_results": [asdict(r) for r in self.triggered_rule_results],
             "hook_coverage": self.hook_coverage,
+            "hook_event_counts": self.hook_event_counts,
             "classification": {
                 "verdict": self.verdict.label,
                 "score": self.verdict.score,

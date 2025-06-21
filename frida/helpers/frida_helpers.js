@@ -1,213 +1,205 @@
 'use strict';
 
 (function () {
+  const fallbackLibs = ['libc.so', 'libdl.so', 'libc.so.6', 'libbionic.so', 'libc_malloc_debug.so'];
 
-  // =====================[ Java Context Checker ]=====================
-  globalThis.isJavaAvailable = function () {
-    try {
-      return typeof Java !== 'undefined' && Java.available;
-    } catch (_) {
-      return false;
-    }
+  // ───── Java VM Utilities ───────────────────────────
+  globalThis.isJavaAvailable = () => {
+    try { return typeof Java !== 'undefined' && Java.available; }
+    catch { return false; }
   };
 
-  // =====================[ Async Java Ready Waiter ]=====================
-  globalThis.runWhenJavaIsReady = function ({
+  globalThis.runWhenJavaIsReady = ({
     retryInterval = 500,
-    maxRetries = 50,
+    maxRetries = 30,
     verbose = true
-  } = {}) {
-    return new Promise((resolve, reject) => {
+  } = {}) => {
+    if (globalThis._javaReadyPromise) return globalThis._javaReadyPromise;
+
+    globalThis._javaReadyPromise = new Promise((resolve, reject) => {
       let attempts = 0;
 
-      const tryCheck = () => {
-        if (typeof Java === 'undefined') {
-          if (verbose) console.warn("[runWhenJavaIsReady] Java is undefined.");
-          return retry();
+      const tryPerform = () => {
+        if (!isJavaAvailable()) {
+          return retry('[JavaCheck] Java not yet available');
         }
 
-        if (Java.available) {
-          try {
-            Java.perform(() => {
-              if (verbose) console.log("[runWhenJavaIsReady] Java.perform succeeded.");
-              resolve();
-            });
-          } catch (e) {
-            console.error("[runWhenJavaIsReady] Java.perform error:", e);
-            reject(e);
-          }
-        } else {
-          retry();
+        try {
+          Java.perform(() => {
+            verbose && console.log('[JavaCheck] Java.perform() successful');
+            resolve();
+          });
+        } catch (err) {
+          retry(`[JavaCheck] perform failed: ${err}`);
         }
       };
 
-      const retry = () => {
+      const retry = msg => {
         if (++attempts <= maxRetries) {
-          if (verbose) console.log(`[runWhenJavaIsReady] Retrying... (${attempts}/${maxRetries})`);
-          setTimeout(tryCheck, retryInterval);
+          verbose && console.warn(`${msg}, retry #${attempts}`);
+          const backoff = Math.min(retryInterval * Math.pow(1.5, attempts), 5000);
+          setTimeout(tryPerform, backoff);
         } else {
-          const msg = "[runWhenJavaIsReady] Gave up waiting for Java VM.";
-          console.error(msg);
-          reject(new Error(msg));
+          const finalMsg = '[JavaCheck] timed out';
+          verbose && console.error(finalMsg);
+          reject(finalMsg);
         }
       };
 
-      tryCheck();
+      tryPerform();
     });
+
+    return globalThis._javaReadyPromise;
   };
 
-  // =====================[ Hook Entrypoint Dispatcher ]=====================
-  globalThis.maybeRunJavaHook = function (callback, metadata = {}) {
-    const entry = metadata.entrypoint?.toLowerCase?.();
-    if (entry === "java") {
-      runWhenJavaIsReady().then(callback).catch(err => {
-        console.error(`[maybeRunJavaHook] Java VM not ready for '${metadata.name}': ${err}`);
-      });
-    } else {
-      callback();
+  globalThis.maybeRunJavaHook = (cb, metadata = {}) => {
+    if (metadata.entrypoint?.toLowerCase() === 'java') {
+      return runWhenJavaIsReady().then(cb).catch(err => console.error(err));
     }
+    return cb();
   };
 
-  // =====================[ Logger Factory ]=====================
-  globalThis.createHookLogger = function ({
-    hook,
-    category,
-    tags = [],
-    description = "",
-    sensitive = false
-  }) {
-    const metadata = { name: hook, category, tags, description, sensitive };
-    return function logEvent(payload) {
-      try {
-        const event = {
-          ...payload,
-          hook: metadata.name,
-          metadata,
-          timestamp: new Date().toISOString(),
-          threadId: Process.getCurrentThreadId()
-        };
-        if (!payload.hook) payload.hook = metadata.name;
-        send(event);
-      } catch (e) {
-        console.error(`[createHookLogger] Failed for ${hook}: ${e}`);
-      }
+  globalThis.ifJava = fn => isJavaAvailable() ? fn() : undefined;
+
+  // ───── Logger Utilities ─────────────────────────────
+  globalThis.createHookLogger = metadata => {
+    return event => {
+      event = event || {};
+      event.hook = event.hook || metadata.name || 'unknown';
+      event.entrypoint = event.entrypoint || metadata.entrypoint || 'native';
+      event.timestamp = event.timestamp || new Date().toISOString();
+      event.tags = Array.from(new Set([...(metadata.tags || []), ...(event.tags || [])]));
+      event.sensitive = metadata.sensitive ?? false;
+      send(event);
     };
   };
 
-  globalThis.waitForLogger = function (metadata, timeout = 5000, interval = 100) {
-    return new Promise((resolve, reject) => {
-      const start = Date.now();
-
-      const check = () => {
-        if (typeof globalThis.createHookLogger === 'function') {
-          console.log(`[waitForLogger] Logger ready for ${metadata.name}`);
-          const logger = createHookLogger(metadata);
-          resolve(logger);
-        } else if (Date.now() - start < timeout) {
-          setTimeout(check, interval);
-        } else {
-          const msg = `[waitForLogger] Timeout waiting for createHookLogger (${metadata.name})`;
-          console.error(msg);
-          reject(new Error(msg));
-        }
-      };
-
-      check();
-    });
+  globalThis.waitForLogger = async metadata => {
+    return Promise.resolve(createHookLogger(metadata));
   };
 
-  // =====================[ Thread / Stack Utilities ]=====================
-  globalThis.get_thread_name = function () {
-    if (!isJavaAvailable()) return "Java not available";
+  // ───── Event Builder ────────────────────────────────
+  globalThis.buildEvent = ({
+    metadata = {},
+    action = null,
+    context = {},
+    args = {},
+    error = false,
+    suspicious = false
+  } = {}) => ({
+    timestamp: new Date().toISOString(),
+    hook: metadata.name || 'unknown',
+    entrypoint: metadata.entrypoint || 'native',
+    category: metadata.category || 'unknown',
+    sensitive: metadata.sensitive || false,
+    tags: metadata.tags || [],
+    action,
+    thread: get_thread_name(),
+    threadId: Process.getCurrentThreadId(),
+    processId: Process.id,
+    context: {
+      module: context.module || null,
+      symbol: context.symbol || null,
+      address: context.address || null,
+      stack: context.stack || null
+    },
+    arguments: args,
+    error,
+    suspicious
+  });
+
+  globalThis.sendEvent = ev => {
+    if (!ev.hook) {
+      console.error(`[sendEvent] Missing hook field in event: ${JSON.stringify(ev, null, 2)}`);
+    }
+    try { send(ev); }
+    catch (e) { console.error(`[sendEvent] failed: ${e}`); }
+  };
+
+  // ───── Logging Utilities ────────────────────────────
+  globalThis.readBytesSafe = (ptr, len) => {
+    try { return (!ptr || ptr.isNull() || len <= 0) ? null : Memory.readByteArray(ptr, len); }
+    catch { return null; }
+  };
+
+  globalThis.fridaSHA1 = bytes => {
+    try { return Crypto.digest('sha1', bytes, { encoding: 'hex' }); }
+    catch { return '<sha1-failed>'; }
+  };
+
+  globalThis.get_thread_name = () => {
+    if (!isJavaAvailable()) return 'native-thread';
     try {
-      return Java.use("java.lang.Thread").currentThread().getName();
-    } catch (_) {
-      return "unknown-thread";
+      return Java.use('java.lang.Thread').currentThread().getName();
+    } catch {
+      return 'unknown-thread';
     }
   };
 
-  globalThis.get_java_stack = function () {
-    if (!isJavaAvailable()) return "Java not available";
+  globalThis.get_java_stack = () => {
+    if (!isJavaAvailable()) return null;
     try {
-      return Java.use("java.lang.Exception").$new().getStackTrace()
-        .map(frame => frame.toString())
-        .join('\n');
-    } catch (_) {
-      return "N/A";
-    }
-  };
-
-  // =====================[ Memory and Digest Utils ]=====================
-  globalThis.readBytesSafe = function (ptr, len) {
-    try {
-      if (!ptr || ptr.isNull() || len <= 0) return null;
-      return Memory.readByteArray(ptr, len);
-    } catch (_) {
+      return Java.use('java.lang.Exception').$new().getStackTrace()
+        .map(f => f?.toString?.() || '<frame>').join('\n');
+    } catch {
       return null;
     }
   };
 
-  globalThis.toHex = function (array) {
-    if (!array || typeof array !== 'object' || !('length' in array)) return '';
-    return Array.prototype.map.call(array, x => ('00' + x.toString(16)).slice(-2)).join('');
-  };
-
-  globalThis.fridaSHA1 = function (bytes) {
-    try {
-      return Crypto.digest("sha1", bytes, { encoding: "hex" });
-    } catch (_) {
-      return "<sha1-failed>";
-    }
-  };
-
-  // =====================[ Safe Native Hooker ]=====================
-  globalThis.safeAttach = function safeAttach(
-    funcName,
-    callbacks,
-    moduleName = null,
-    {
+  // ───── Hooking Utilities ────────────────────────────
+  globalThis.safeAttach = (fn, callbacks, moduleName = null, opts = {}) => {
+    const {
       initialDelay = 0,
       maxRetries = 10,
       retryInterval = 200,
       verbose = true
-    } = {}
-  ) {
+    } = opts;
+
+    if (typeof fn !== 'string') {
+      console.warn(`[safeAttach] Skipping non-string function name: ${String(fn)}`);
+      return Promise.resolve(null);
+    }
+
+    const resolvedHooks = globalThis._resolvedHooks || new Set();
+    globalThis._resolvedHooks = resolvedHooks;
+
     return new Promise((resolve, reject) => {
       let attempts = 0;
+      const key = `${moduleName || '?'}:${fn}`;
 
       const tryHook = () => {
+        if (resolvedHooks.has(key)) {
+          verbose && console.log(`[safeAttach] Skipping duplicate hook: ${fn}`);
+          return resolve(null);
+        }
+
         let addr = null;
         try {
-          addr = Module.findExportByName(moduleName, funcName);
+          addr = tryResolve(fn, moduleName, verbose);
+          if (!addr || !(addr instanceof NativePointer) || addr.isNull()) {
+            return retry(`[safeAttach] Invalid address for ${fn}`);
+          }
         } catch (e) {
-          return retry(`[safeAttach] Module lookup failed for ${funcName}: ${e}`);
-        }
-
-        if (!addr) {
-          return retry(`[safeAttach] ${funcName} not found in ${moduleName || "default module"}`);
-        }
-
-        if (typeof Interceptor?.attach !== 'function') {
-          return retry(`[safeAttach] Interceptor.attach not available`);
+          return retry(`[safeAttach] Failed to resolve ${fn}: ${e.message}`);
         }
 
         try {
           Interceptor.attach(addr, callbacks);
-          if (verbose) console.log(`[safeAttach] Hooked ${funcName} at ${addr}`);
+          resolvedHooks.add(key);
+          verbose && console.log(`[safeAttach] Hooked ${fn} at ${addr}`);
           resolve(addr);
         } catch (e) {
-          reject(`[safeAttach] Attaching to ${funcName} failed: ${e}`);
+          retry(`[safeAttach] attach failed for ${fn}: ${e.message}`);
         }
       };
 
-      const retry = (log) => {
+      const retry = msg => {
         if (++attempts < maxRetries) {
-          if (verbose) console.warn(`${log}, retrying (${attempts}/${maxRetries})`);
-          setTimeout(tryHook, retryInterval);
+          verbose && console.warn(`${msg}, retry #${attempts}`);
+          setTimeout(tryHook, Math.min(retryInterval * Math.pow(1.5, attempts), 3000));
         } else {
-          const msg = `[safeAttach] Giving up on ${funcName} after ${maxRetries} attempts`;
-          console.error(msg);
-          reject(msg);
+          console.error(`GAVE UP on ${fn}`);
+          reject(`GAVE UP on ${fn}`);
         }
       };
 
@@ -215,57 +207,84 @@
     });
   };
 
-  // =====================[ Native Symbol Resolver ]=====================
-  globalThis.resolveNativeExport = function (funcName, moduleName = null) {
-    try {
-      return Module.findExportByName(moduleName, funcName);
-    } catch (_) {
+  function tryResolve(fn, mod, verbose) {
+    if (typeof fn !== 'string') return null;
+
+    const altNames = [
+      fn, `__${fn}`, `${fn}_64`, `${fn}64`, `${fn}_2`, `_${fn}`
+    ];
+
+    const tryNames = (resolverFn, label) => {
+      for (const name of altNames) {
+        try {
+          const addr = resolverFn(name);
+          if (addr) {
+            verbose && console.log(`[safeAttach] Resolved ${name} via ${label}`);
+            return addr;
+          }
+        } catch (_) {}
+      }
       return null;
+    };
+
+    // Exported symbols
+    if (mod) {
+      const addr = tryNames(name => Module.findExportByName(mod, name), `Module(${mod}).exports`);
+      if (addr) return addr;
     }
-  };
 
-  // =====================[ C2 Pattern Checker ]=====================
-  globalThis.isSensitiveNativeFunction = function (name) {
-    if (typeof name !== 'string') return false;
-    const risky = ["system", "exec", "dlopen", "fork", "popen", "CreateProcess"];
-    return risky.includes(name.toLowerCase());
-  };
+    for (const lib of fallbackLibs) {
+      const addr = tryNames(name => Module.findExportByName(lib, name), `exports in ${lib}`);
+      if (addr) return addr;
+    }
 
-  // =====================[ Custom Event Emitter ]=====================
-  globalThis.send_event = function (data, context = {}) {
+    // Symbol table
+    if (mod) {
+      const addr = tryNames(name => Module.findSymbolByName(mod, name), `Module(${mod}).symbols`);
+      if (addr) return addr;
+    }
+
+    for (const lib of fallbackLibs) {
+      const addr = tryNames(name => Module.findSymbolByName(lib, name), `symbols in ${lib}`);
+      if (addr) return addr;
+    }
+
+    // ApiResolver fallback
     try {
-      const payload = {
-        ...data,
-        ...context,
-        timestamp: new Date().toISOString()
-      };
-      send(payload);
+      const resolver = new ApiResolver("module");
+      const results = resolver.enumerateMatches(`exports:*${fn}*`);
+      if (results.length > 0) {
+        const addr = results[0].address;
+        verbose && console.log(`[safeAttach] Resolved ${fn} via ApiResolver at ${addr}`);
+        return addr;
+      }
     } catch (e) {
-      console.error(`[send_event] Failed: ${e}`);
+      verbose && console.warn(`[safeAttach] ApiResolver error: ${e.message}`);
     }
-  };
 
-  // =====================[ Initialization Signal ]=====================
-  try {
-    if (!globalThis._fridaHelpersInitialized) {
-      globalThis._fridaHelpersInitialized = true;
-
-      send({
-        type: 'frida_helpers_loaded',
-        hook: "frida_helpers",
-        category: 'system',
-        tags: ["init"],
-        timestamp: new Date().toISOString(),
-        globals: {
-          runWhenJavaIsReady: typeof runWhenJavaIsReady === 'function',
-          maybeRunJavaHook: typeof maybeRunJavaHook === 'function',
-          createHookLogger: typeof createHookLogger === 'function',
-          isJavaAvailable: typeof Java !== 'undefined'
+    // Brute-force last resort
+    for (const m of Process.enumerateModules()) {
+      for (const exp of m.enumerateExports()) {
+        if (altNames.includes(exp.name)) {
+          verbose && console.log(`[safeAttach] Brute-forced ${exp.name} in ${m.name}`);
+          return exp.address;
         }
-      });
+      }
     }
-  } catch (e) {
-    console.error("[frida_helpers] Initialization failed:", e);
+
+    return null;
   }
+
+  // ───── JVM Ready Signal ─────────────────────────────
+  runWhenJavaIsReady({
+    retryInterval: 500,
+    maxRetries: 60,
+    verbose: true
+  }).then(() => {
+    send({ type: 'jvm_ready' });
+    console.log('[frida_helpers] JVM ready signal sent');
+  }).catch(err => {
+    console.error('[frida_helpers] JVM never became available:', err);
+  });
 
 })();

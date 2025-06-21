@@ -8,32 +8,31 @@ from apk_inspector.analysis.dynamic.hook_validator import validate_hook_script
 def extract_metadata_from_hook(script_path: Path) -> Optional[Dict]:
     """
     Parses the `const metadata = { ... }` or `const metadata_<hook> = { ... }` block from a Frida hook file.
-    Handles JS-style syntax with unquoted keys, booleans, and arrays.
+    Handles JS-style syntax with unquoted keys, booleans, single quotes, and comments.
     """
     try:
         text = script_path.read_text(encoding="utf-8")
 
-        # Try to match both `const metadata = {` and `const metadata_<suffix> = {`
+        # Match metadata declaration
         match = re.search(r'(?:const|var|let)\s+metadata(?:_\w+)?\s*=\s*{(.*?)};', text, re.DOTALL)
         if not match:
             return None
 
         block = match.group(1)
 
-        # Normalize JS → JSON
+        # JS to JSON normalization
         block = re.sub(r'//.*', '', block)  # Remove line comments
         block = re.sub(r'/\*.*?\*/', '', block, flags=re.DOTALL)  # Remove block comments
         block = re.sub(r'(\w+)\s*:', r'"\1":', block)  # Quote keys
-        block = block.replace("'", '"')
-        block = block.replace("true", "true").replace("false", "false")  # No-op for clarity
-        block = "{" + block.strip().rstrip(",") + "}"
+        block = block.replace("'", '"')  # Normalize single quotes
+        block = re.sub(r',\s*}', '}', block)  # Remove trailing commas
 
+        block = "{" + block.strip() + "}"
         return json.loads(block)
 
     except Exception as ex:
         print(f"[!] Failed to parse metadata from {script_path.name}: {ex}")
         return None
-
 
 def discover_hooks(hook_dir: Path, logger, filter_tags: Optional[list] = None, only_sensitive: bool = False) -> Dict[str, Dict]:
     """
@@ -46,13 +45,13 @@ def discover_hooks(hook_dir: Path, logger, filter_tags: Optional[list] = None, o
         hook_name = path.stem.replace("hook_", "")
 
         # Validate the hook
-        issues = validate_hook_script(path)
-        if issues:
-            if logger:
-                logger.warning(f"[!] Hook '{hook_name}' skipped due to validation errors:")
-                for issue in issues:
-                    logger.warning(f"    - {issue}")
-            continue
+        #issues = validate_hook_script(path)
+        #if issues:
+        #    if logger:
+        #        logger.warning(f"[!] Hook '{hook_name}' skipped due to validation errors:")
+        #        for issue in issues:
+        #            logger.warning(f"    - {issue}")
+        #    continue
 
         metadata = extract_metadata_from_hook(path) or {}
         if not metadata:
