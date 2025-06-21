@@ -4,7 +4,7 @@ from pathlib import Path
 import time
 from apk_inspector.analysis.dynamic.frida_multi_hook_mngr import FridaMultiHookManager
 from apk_inspector.analysis.dynamic.hook_descovery import discover_hooks
-from apk_inspector.utils.frida_utils import wait_for_java_vm
+from apk_inspector.utils.frida_utils import get_usb_device_safe
 from tools.adb_tools import wake_and_unlock
 from apk_inspector.analysis.dynamic.frida_session import FridaSession
 
@@ -50,7 +50,7 @@ class FridaSessionManager:
 
         try:
             # ─── Device connection ──────────────────────────────
-            device = frida.get_usb_device(timeout=1000)
+            device = get_usb_device_safe(self.logger)
             self.logger.info(f"[FRIDA] Connected to device: {device.name}")
             wake_and_unlock()
 

@@ -65,8 +65,7 @@ class APKBatchRunner:
                 # Force GC and Frida shutdown
                 import gc, frida
                 gc.collect()
-                frida.shutdown()
-                
+                             
             except Exception as ex:
                 self.logger.error(f"[✗] Analysis failed for {apk_path.name}: {ex}")
                 

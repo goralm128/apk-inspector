@@ -86,4 +86,13 @@ def wait_for_process(device, package: str, timeout: int = 20, interval: float = 
     raise frida.ProcessNotFoundError(message)
 
 
-
+def get_usb_device_safe(logger, retries=3, delay=2):
+    for attempt in range(retries):
+        try:
+            return frida.get_usb_device(timeout=2000)
+        except frida.InvalidOperationError as e:
+            logger.warning(f"[FRIDA] Device manager closed (attempt {attempt+1}/{retries}): {e}")
+        except Exception as e:
+            logger.warning(f"[FRIDA] Error accessing USB device (attempt {attempt+1}/{retries}): {e}")
+        time.sleep(delay)
+    raise RuntimeError("Unable to acquire USB device. Frida device manager may be shut down.")
