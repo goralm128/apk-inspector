@@ -34,8 +34,7 @@ class DynamicAnalyzer:
         self.rule_engine = rule_engine
         self.tag_inferencer = tag_inferencer
         self.hook_metadata_map = self._load_hook_metadata()
-        self.hook_event_counts: Dict[str, int] = {}
-        self.hook_coverage: Dict[str, int] = {}
+        self.hook_event_counts: Dict[str, int] = {}     
 
     def _load_hook_metadata(self) -> Dict[str, Dict[str, Any]]:
         metadata_map = {}
@@ -83,7 +82,7 @@ class DynamicAnalyzer:
 
         # ─── Scoring and Rule Labeling ─────────────────────────────
         try:
-            score, label, justification = self.rule_engine._score_event(event)
+            score, label, justification = self.rule_engine.score_event(event)
             event.update({
                 "score": score,
                 "label": label,
@@ -153,14 +152,10 @@ class DynamicAnalyzer:
                 hook = e.get("source_hook") or e.get("hook", "unknown")
                 self.hook_event_counts[hook] = self.hook_event_counts.get(hook, 0) + 1
 
-            self.hook_coverage = Counter(e.get("source_hook", "unknown") for e in deduped)
-
-            self.logger.info(f"[{package_name}] ✅ Hook coverage:\n{json.dumps(self.hook_coverage, indent=2)}")
-            #self.logger.info(f"[{package_name}] 📈 Hook event counts:\n{json.dumps(self.hook_event_counts, indent=2)}")
+            self.logger.info(f"[{package_name}] 📈 Hook event counts:\n{json.dumps(self.hook_event_counts, indent=2)}")
 
             return {
                 "events": deduped,
-                "hook_coverage": dict(self.hook_coverage),
                 "hook_event_counts": dict(self.hook_event_counts),
                 "java_vm_ready": java_vm_ready,
                 "jvm_absence_reason": jvm_absence_reason
@@ -170,7 +165,6 @@ class DynamicAnalyzer:
             self.logger.exception(f"[{package_name}] ❌ Analysis failure: {ex}")
             return {
                 "events": [],
-                "hook_coverage": {},
                 "hook_event_counts": {},
                 "java_vm_ready": False,
                 "jvm_absence_reason": "exception"

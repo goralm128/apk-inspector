@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Dict, Any, List
+from datetime import datetime, timezone
 from apk_inspector.analysis.dynamic.hook_descovery import discover_hooks
 from apk_inspector.analysis.dynamic.dynamic_analyzer import DynamicAnalyzer
 from apk_inspector.analysis.static.static_analyzer import StaticAnalyzer
@@ -50,6 +51,7 @@ class APKInspector:
             raise RuntimeError(f"No Frida hook scripts found in: {self.hooks_dir}")
 
     def run(self) -> Dict[str, Any]:
+        self.report_builder.reset()
         package_name = self.report_builder.package
         base_report = {
             "apk_metadata": {
@@ -92,9 +94,12 @@ class APKInspector:
                 run_dir=self.run_dir,
                 timeout=self.timeout
             )
+            
+            hook_metadata_map = dynamic_analyzer.hook_metadata_map
+            self.report_builder.set_hook_metadata(hook_metadata_map)
+            
             dyn_res = dynamic_analyzer.analyze(package_name, apk_metadata=apk_metadata)
             events = dyn_res.get("events", [])
-            hook_cov = dyn_res.get("hook_coverage", {})
             hook_counts = dyn_res.get("hook_event_counts", {})
             self.logger.info(f"[{package_name}] Dynamic analysis collected {len(events)} events.")
             
@@ -110,7 +115,6 @@ class APKInspector:
             
             self.report_builder.merge_hook_result({
                "events": events,
-                "hook_coverage": hook_cov,
                 "hook_event_counts": hook_counts,
                 "verdict": verdict
             })
@@ -158,10 +162,31 @@ class APKInspector:
     def _error_result(self, package: str, base: Dict[str, Any], error_msg: str) -> Dict[str, Any]:
         return {
             **base,
-            "verdict": "error",
-            "score": 0,
-            "events": [],
-            "yara_matches": [],
+            "apk_metadata": {
+                **base.get("apk_metadata", {}),
+                "analyzed_at": datetime.now(timezone.utc).isoformat(),
+            },
             "static_analysis": {},
+            "yara_matches": [],
+            "dynamic_analysis": {
+                "original_events": [],
+                "aggregated_events": [],
+                "summary": {}
+            },
+            "triggered_rule_results": [],
+            "hook_event_counts": {},
+            "classification": {
+                "verdict": "error",
+                "score": 0,
+                "flags": ["evaluation_failed"],
+                "cvss_risk_band": "Unknown"
+            },
+            "risk_breakdown": {
+                "static_score": 0,
+                "dynamic_score": 0,
+                "yara_score": 0,
+                "total_score": 0
+            },
             "error": error_msg
         }
+

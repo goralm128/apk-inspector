@@ -59,3 +59,4 @@ logs/
 .DS_Store
 Thumbs.db
 venv310/
+__handlers__/libc.so/open.js

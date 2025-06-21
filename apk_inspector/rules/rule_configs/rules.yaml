@@ -4,7 +4,7 @@
   weight: 5
   severity: medium
   condition: "'token' in event.get('path', '') or event.get('classification') == 'sensitive'"
-  tags: ["privacy", "filesystem"]
+  tags: ["token", "key", "filesystem", "sensitive"]
   cvss: 5.5
 
 - id: R2
@@ -12,18 +12,18 @@
   category: network
   weight: 4
   severity: medium
-  condition: "event.get('address', {}).get('is_private') is False"
-  tags: ["network", "external"]
+  condition: "event.get('address', {}).get('is_private') is False or 'blacklisted_ip' in event.get('tags', [])"
+  tags: ["network", "external", "blacklisted_ip"]
   cvss: 4.3
 
 - id: R3
   description: "High-volume data transfer via write"
   category: exfiltration
-  weight: 4
-  severity: medium
+  weight: 5
+  severity: high
   condition: "event.get('event') == 'write' and event.get('length', 0) > 8192 and event.get('path_type') != 'app_storage'"
-  tags: ["exfiltration", "data"]
-  cvss: 5.8
+  tags: ["exfiltration", "data", "write"]
+  cvss: 6.8
 
 - id: R4
   description: "Suspicious file access in system directory"
@@ -31,7 +31,7 @@
   weight: 6
   severity: high
   condition: "event.get('path_type') == 'system_access'"
-  tags: ["filesystem", "system"]
+  tags: ["filesystem", "system", "privilege"]
   cvss: 6.1
 
 - id: R5
@@ -40,7 +40,7 @@
   weight: 7
   severity: high
   condition: "event.get('data') and any(domain in str(event['data']) for domain in ['example.com', 'evil.org', 'malicious.net'])"
-  tags: ["c2", "dns"]
+  tags: ["c2", "dns", "ip_address"]
   cvss: 6.5
 
 - id: R6
@@ -57,7 +57,7 @@
   category: reflection
   weight: 6
   severity: high
-  condition: "event.get('category') == 'reflection'"
+  condition: "event.get('category') == 'reflection' or 'reflection' in event.get('tags', [])"
   tags: ["reflection", "evasion"]
   cvss: 6.9
 
@@ -66,8 +66,8 @@
   category: dex_loading
   weight: 6
   severity: high
-  condition: "'dlopen' in event.get('hook', '') or 'Class.forName' in event.get('hook', '')"
-  tags: ["code_injection", "jni", "native"]
+  condition: "'dlopen' in event.get('hook', '') or 'Class.forName' in event.get('hook', '') or 'dex_load' in event.get('tags', [])"
+  tags: ["code_injection", "jni", "native", "dex_load"]
   cvss: 7.0
 
 - id: R9

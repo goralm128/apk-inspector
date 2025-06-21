@@ -12,15 +12,17 @@ category_score:
   system_behavior: 15
   sensitive_string: 10
 tag_score:
-  # UI/Permission Abuse
+   # UI/Permission Abuse
   overlay: 10
   accessibility: 10
   clickjacking: 10
   system_alert: 10
   phishing: 15
   ui_hijack: 15
+
   # Code & Runtime Behavior
   dex: 10
+  dex_load: 12
   code_injection: 15
   jni: 10
   hooking: 15
@@ -33,9 +35,12 @@ tag_score:
   entropy: 10
   weak_crypto: 15
   crypto_usage: 10
+
   # Privilege Abuse
   su: 15
   root: 15
+  privilege: 10
+
   # Network / Exfil
   c2: 20
   http: 10
@@ -44,6 +49,10 @@ tag_score:
   upload: 10
   exfiltration: 20
   ip_address: 10
+  blacklisted_ip: 10
+  network: 8
+  external: 6
+
   # Crypto / Sensitive Data
   crypto: 10
   base64: 5
@@ -55,6 +64,13 @@ tag_score:
   auth: 10
   jwt: 10
   key: 10
+
+  # Filesystem / Event Metadata
+  filesystem: 8
+  system: 8
+  data: 5
+  write: 5
+
   # Other
   evasion: 10
   xor: 10

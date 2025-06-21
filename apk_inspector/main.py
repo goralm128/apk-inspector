@@ -63,7 +63,7 @@ def main():
     try:
         sys.exit(run_analysis())
     except Exception as ex:
-        print(f"[ERROR] {type(e).__name__}: {ex}", file=sys.stderr)
+        print(f"[ERROR] {type(ex).__name__}: {ex}", file=sys.stderr)
         sys.exit(1)
 
 

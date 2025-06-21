@@ -36,11 +36,14 @@
     }
   }
 
-  function tagSuspicious(ip, port) {
-    return {
-      flagged_ip: BLACKLISTED_IPS.has(ip),
-      flagged_port: BLACKLISTED_PORTS.has(port)
-    };
+  function tagSuspicious(ip, port, fn, bytes) {
+    const tags = new Set([...metadata.tags, fn]);
+
+    if (BLACKLISTED_IPS.has(ip)) tags.add("blacklisted_ip");
+    if (BLACKLISTED_PORTS.has(port)) tags.add("blacklisted_port");
+    if (bytes > 4096 && fn === "send") tags.add("encrypt");
+
+    return Array.from(tags);
   }
 
   try {
@@ -55,7 +58,7 @@
           const peer = resolvePeer(this.fd);
           if (peer) {
             fdMap[this.fd] = peer;
-            const tags = tagSuspicious(peer.ip, peer.port);
+
             const ev = {
               hook: metadata.name,
               action: "connect",
@@ -65,21 +68,21 @@
               port: peer.port,
               family: peer.family,
               error: false,
-              suspicious: tags.flagged_ip || tags.flagged_port,
+              suspicious: BLACKLISTED_IPS.has(peer.ip) || BLACKLISTED_PORTS.has(peer.port),
               thread: get_thread_name(),
               threadId: Process.getCurrentThreadId(),
               processId: Process.id,
-              tags: [...metadata.tags],
+              tags: tagSuspicious(peer.ip, peer.port, "connect", 0),
               metadata,
-              timestamp: new Date().toISOString(),
-              ...tags
+              timestamp: new Date().toISOString()
             };
+
             log(ev);
             console.log(`[${metadata.name}] connect(${this.fd}) → ${peer.ip}:${peer.port}`);
           }
         }
       }
-    }, null, { maxRetries: 8, retryInterval: 250, verbose: true });
+    });
 
     const funcs = ["send", "recv", "sendto", "recvfrom"];
     for (const fn of funcs) {
@@ -94,7 +97,7 @@
           const peer = fdMap[this.fd] || resolvePeer(this.fd);
           const ip = peer?.ip || "<unknown>";
           const port = peer?.port || -1;
-          const tags = tagSuspicious(ip, port);
+
           const ev = {
             hook: metadata.name,
             action: fn,
@@ -104,20 +107,19 @@
             port,
             bytes,
             error: bytes < 0,
-            suspicious: tags.flagged_ip || tags.flagged_port || bytes > 8192,
+            suspicious: BLACKLISTED_IPS.has(ip) || BLACKLISTED_PORTS.has(port) || bytes > 8192,
             thread: get_thread_name(),
             threadId: Process.getCurrentThreadId(),
             processId: Process.id,
-            tags: [...metadata.tags],
+            tags: tagSuspicious(ip, port, fn, bytes),
             metadata,
-            timestamp: new Date().toISOString(),
-            ...tags
+            timestamp: new Date().toISOString()
           };
+
           log(ev);
           console.log(`[${metadata.name}] ${fn}(${this.fd}) → ${bytes} bytes to ${ip}:${port}`);
         }
-      }, null, { maxRetries: 8, retryInterval: 250, verbose: true });
-      console.log(`[${metadata.name}] Hooked ${fn}`);
+      });
     }
 
     log(buildEvent({ metadata, action: "hook_loaded" }));
