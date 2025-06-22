@@ -49,13 +49,19 @@ class RuleEngine:
     SUSPICIOUS_THRESHOLD = 40
     DYNAMIC_BOOST_THRESHOLD = 30
 
-    def __init__(self, rules: List[Rule], scoring_profile_path: Optional[Path] = None, thresholds_path: Optional[Path] = None):
+    def __init__(self, rules: List[Rule], scoring_profile_path: Optional[Path] = None, 
+                 thresholds_path: Optional[Path] = None, known_tags: Optional[List[str]] = None):
         assert isinstance(rules, list) and rules, "No rules loaded!"
         self.rules = rules
         logger.info(f"[✓] Loaded {len(self.rules)} rules: {[r.id for r in self.rules]}")
         self._load_scoring(scoring_profile_path or DEFAULT_SCORING_PROFILE_PATH)
         self._load_thresholds(thresholds_path or CONFIG_DIR / "auto_thresholds.json")
         self.HOOK_SCORE_TABLE = DEFAULT_HOOK_SCORE_TABLE
+        self.KNOWN_TAGS = set(known_tags) if known_tags else set()
+        
+    def set_tag_rules(self, tag_rules: Dict[str, List[str]]):
+        self.KNOWN_TAGS = set(tag_rules.keys())
+        logger.info(f"[RuleEngine] Known tags updated: {len(self.KNOWN_TAGS)} tags")
 
     def _load_scoring(self, path: Path):
         try:
@@ -105,7 +111,7 @@ class RuleEngine:
             if rule.category.lower() not in self.CATEGORY_SCORE:
                 logger.warning(f"[RuleEngine] ⚠ Rule {rule.id} has unknown category: '{rule.category}'")
 
-            unknown_tags = [t for t in rule.tags if t not in self.TAG_SCORE]
+            unknown_tags = [t for t in rule.tags if t not in self.KNOWN_TAGS]
             if unknown_tags:
                 logger.warning(f"[RuleEngine] ⚠ Rule {rule.id} contains unknown tags: {unknown_tags}")
 
@@ -188,6 +194,7 @@ class RuleEngine:
                     sev_factor = self.SEVERITY_SCORE.get(r.severity.lower(), 1)
                     count = event_count_by_rule[r.rule_id]
                     scaled = int(base_weight * sev_factor * log2(count + 1))
+                    scaled = min(scaled, 15)  # Cap individual rule impact
                     logger.info(f"[Event-{idx}] Rule {r.rule_id}: weight={base_weight}, severity={r.severity}, count={count}, scaled={scaled}")
                     dynamic_score += scaled
 
@@ -223,6 +230,7 @@ class RuleEngine:
             logger.info(f"[RuleEngine] Behavior diversity bonus applied (+10)")
 
         logger.info(f"[RuleEngine] Final dynamic_score={dynamic_score}, rule_bonus_score={rule_bonus_score}, high_risk_events={high_risk}, rules_triggered={len(rule_results)}")
+        dynamic_score = min(dynamic_score, 70)
         return dynamic_score, rule_bonus_score, reasons, high_risk, net_flag, rule_results
 
     def _evaluate_static(self, static_info: Dict[str, Any]) -> Tuple[int, List[str]]:

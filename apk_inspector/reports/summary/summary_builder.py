@@ -15,73 +15,47 @@ class ApkSummaryBuilder:
 
     def build_summary(self) -> ApkSummary:
         meta = self.report.get("apk_metadata", {})
-        classification = self.report.get("classification", {})
-        dynamic = self.report.get("dynamic_analysis", {})
-        yara_matches = self.report.get("yara_matches", [])
+        # Use correct location for classification info
+        verdict = self.report.get("classification") or self.report.get("report_summary", {}).get("classification", {})
+        # fallback to top-level keys if report is minimal
+        score = verdict.get("score") or self.report.get("score") or 0
+        label = verdict.get("verdict") or verdict.get("label") or "unknown"
+        flags = verdict.get("flags") or []
 
-        try:
-            justifications = [
-                e.get("justification")
-                for e in dynamic.get("events", [])
-                if e.get("justification")
-            ]
+        # Fix breakdown source
+        breakdown = self.report.get("risk_breakdown") or self.report.get("report_summary", {}).get("risk_breakdown", {})
 
-            analyzer = JustificationAnalyzer(justifications)
-            
-            # --- YARA match count ---
-            yara_match_count = len(yara_matches)
+        # cvss detection remains
+        cvss_scores = [
+            rd.get("cvss", 0.0)
+            for e in self.report.get("dynamic_analysis", {}).get("events", [])
+            for rd in e.get("metadata", {}).get("triggered_rule_details", [])
+            if isinstance(rd, dict)
+        ]
+        max_cvss = max(cvss_scores, default=0.0)
+        cvss_band = compute_cvss_band(max_cvss)
 
-            # --- Top triggered rule IDs ---
-            triggered_rules = [
-                rid
-                for e in dynamic.get("events", [])
-                for rid in e.get("metadata", {}).get("triggered_rules", [])
-            ]
-            top_triggered = [rule for rule, _ in Counter(triggered_rules).most_common(5)]
-
-            # --- CVSS band from triggered rules (optional enhancement) ---
-            # If your event metadata includes CVSS scores, extract them
-            cvss_scores = [
-                rule.get("cvss", 0.0)
-                for e in dynamic.get("events", [])
-                for rule in e.get("metadata", {}).get("triggered_rule_details", [])
-                if isinstance(rule, dict)
-            ]
-            max_cvss = max(cvss_scores, default=0.0)
-
-            cvss_band = compute_cvss_band(max_cvss)
-            
-            return ApkSummary(
-                apk_name=meta.get("apk_name", meta.get("package_name", "unknown.apk")),
-                apk_package=meta.get("package_name", "unknown.package"),
-                sha256=meta.get("hash", {}).get("sha256", "N/A"),
-                classification=classification.get("verdict", "unknown"),
-                risk_score=classification.get("score", 0),
-                key_flags=classification.get("flags", []),
-                dynamic_summary=dynamic.get("summary", DEFAULT_DYNAMIC_SUMMARY.copy()),
-                top_tags=analyzer.top_tags(),
-                top_sources=analyzer.top_sources(),
-                yara_matches=[
-                    m["rule"] if isinstance(m, dict) else getattr(m, "rule", "unknown")
-                    for m in yara_matches
-                ],
-                yara_match_count=yara_match_count,
-                top_triggered_rules=top_triggered,
-                cvss_risk_band=cvss_band,
-                risk_breakdown=self.report.get("report_summary", {}).get("risk_breakdown", {}),
-                error=""
-            )
-            
-        except Exception as ex:
-            self.logger.exception(f"[✗] Failed to build summary for {meta.get('package_name', 'unknown')}")
-            return ApkSummary(
-                apk_name=meta.get("apk_name", "unknown.apk"),
-                apk_package=meta.get("package_name", "unknown.package"),
-                sha256=meta.get("hash", {}).get("sha256", "N/A"),
-                classification="error",
-                risk_score=0,
-                error=f"Summary build failed: {str(ex)}"
-            )
+        # Build summary
+        return ApkSummary(
+            apk_name=meta.get("apk_name", meta.get("package_name")),
+            apk_package=meta.get("package_name"),
+            sha256=self.report.get("apk_metadata", {}).get("sha256", "N/A"),
+            classification=label,
+            risk_score=score,
+            key_flags=flags,
+            dynamic_summary=self.report.get("dynamic_analysis", {}).get("summary", DEFAULT_DYNAMIC_SUMMARY.copy()),
+            top_tags=JustificationAnalyzer(
+                       [e.get("justification") for e in self.report.get("dynamic_analysis", {}).get("events", []) if e.get("justification")]
+                     ).top_tags(),
+            top_sources=[],  # add analyzer if needed
+            top_triggered_rules=[],
+            cvss_risk_band=cvss_band,
+            risk_breakdown=breakdown,
+            yara_matches=[m["rule"] if isinstance(m, dict) else getattr(m, "rule", "unknown")
+                          for m in self.report.get("yara_matches", [])],
+            yara_match_count=len(self.report.get("yara_matches", [])),
+            error=""
+        )
 
     @staticmethod
     def build_combined_summaries(reports: List[Dict[str, Any]]) -> List[ApkSummary]:

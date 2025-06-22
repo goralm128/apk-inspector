@@ -8,6 +8,11 @@ key:
   - "api[_\\-]?key"
   - "secret[_\\-]?key"
 
+secret:
+  - "secret"
+  - "secret_key"
+  - "top_secret"
+
 filesystem:
   - "\\bfile\\b"
   - "/data/"
@@ -69,6 +74,11 @@ native:
   - "jni"
   - "execve"
   - "fork"
+
+jni:
+  - "\\bjni\\b"
+  - "Java Native Interface"
+  - "JNIEnv"
 
 code_injection:
   - "injection"
@@ -150,6 +160,13 @@ base64:
 
 entropy:
   - "[a-zA-Z0-9+/]{32,}=="
+  - "[A-Za-z0-9+/]{40,}"
+
+unencrypted:
+  - "unencrypted"
+  - "plaintext"
+  - "no_ssl"
+  - "http://"
 
 privilege:
   - "system_access"
@@ -212,3 +229,23 @@ encrypted:
   - "encrypted_data"
   - "crypto_context"
 
+logging:
+  - "log\\.(d|i|e|w)"
+  - "print\\("
+  - "System\\.out\\.println"
+
+tracking:
+  - "gps"
+  - "location_manager"
+  - "cell_tower"
+  - "geo"
+
+adb:
+  - "\\badb\\b"
+  - "usb_debug"
+  - "adb_shell"
+
+zip:
+  - "\\.zip"
+  - "ZipInputStream"
+  - "ZipOutputStream"

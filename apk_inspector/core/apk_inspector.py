@@ -90,6 +90,8 @@ class APKInspector:
                 "apk_name": self.apk_path.name,
                 "apk_path": str(self.apk_path),               
             }
+            
+            self.rule_engine.set_tag_rules(tag_rules)
 
             dynamic_analyzer = DynamicAnalyzer(
                 hooks_dir=self.hooks_dir,
