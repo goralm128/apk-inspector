@@ -114,6 +114,9 @@ class APKReportBuilder:
     def _assemble_report(
         self, aggregated_events: List[Dict[str, Any]], verdict: Verdict, rule_results: List[TriggeredRuleResult]
     ) -> Dict[str, Any]:
+        dynamic_summary = self._summarize_events()
+        hook_coverage_percent = self._calculate_hook_coverage_percent()
+
         return {
             "apk_metadata": {
                 "package_name": self.package,
@@ -128,11 +131,11 @@ class APKReportBuilder:
             "dynamic_analysis": {
                 "original_events": self._event_dicts(),
                 "aggregated_events": aggregated_events,
-                "summary": self._summarize_events()
+                "summary": dynamic_summary
             },
             "triggered_rule_results": [asdict(r) for r in rule_results],
             "hook_event_counts": self.hook_event_counts,
-            "hook_coverage_percent": self._calculate_hook_coverage_percent(),
+            "hook_coverage_percent": hook_coverage_percent,
             "report_summary": {
                 "classification": {
                     "verdict": verdict.label,
@@ -150,7 +153,7 @@ class APKReportBuilder:
                 }
             }
         }
-    
+
     def build(self) -> Dict[str, Any]:
         logger.info(f"[{self.package}] Building full report...")
         try:

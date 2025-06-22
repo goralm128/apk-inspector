@@ -6,6 +6,7 @@ from apk_inspector.reports.models import Verdict, TriggeredRuleResult
 from apk_inspector.config.scoring_loader import load_scoring_profile
 from apk_inspector.utils.scoring_utils import compute_cvss_band
 from apk_inspector.config.defaults import DEFAULT_SCORING_PROFILE_PATH
+from apk_inspector.tuning.threshold_tuner import ThresholdTuner
 from apk_inspector.utils.logger import get_logger
 from pathlib import Path
 import json
@@ -46,9 +47,9 @@ class Rule:
 
 
 class RuleEngine:
-    MALICIOUS_THRESHOLD = 80
-    SUSPICIOUS_THRESHOLD = 40
-    DYNAMIC_BOOST_THRESHOLD = 30
+    MALICIOUS_THRESHOLD = 75
+    SUSPICIOUS_THRESHOLD = 35
+    DYNAMIC_BOOST_THRESHOLD = 28
 
     def __init__(self, rules: List[Rule], scoring_profile_path: Optional[Path] = None, 
                  thresholds_path: Optional[Path] = None, known_tags: Optional[List[str]] = None):
@@ -81,14 +82,17 @@ class RuleEngine:
 
     def _load_thresholds(self, path: Path):
         try:
-            with path.open("r", encoding="utf-8") as f:
-                thresholds = json.load(f)
-            self.MALICIOUS_THRESHOLD = thresholds.get("malicious_threshold", 80)
-            self.SUSPICIOUS_THRESHOLD = thresholds.get("suspicious_threshold", 40)
-            self.DYNAMIC_BOOST_THRESHOLD = thresholds.get("dynamic_boost_threshold", 30)
-            logger.info(f"[✓] Loaded thresholds from {path}: {thresholds}")
+            tuner = ThresholdTuner(output_path=path)
+            thresholds = tuner.load_thresholds()
+            if thresholds:
+                self.MALICIOUS_THRESHOLD = thresholds.get("malicious_threshold", 75)
+                self.SUSPICIOUS_THRESHOLD = thresholds.get("suspicious_threshold", 35)
+                self.DYNAMIC_BOOST_THRESHOLD = thresholds.get("dynamic_boost_threshold", 28)
+                logger.info(f"[✓] Loaded thresholds from tuner: {thresholds}")
+            else:
+                logger.warning("[RuleEngine] Using default fallback thresholds.")
         except Exception as ex:
-            logger.warning(f"[RuleEngine] Could not load thresholds: {ex}")
+            logger.warning(f"[RuleEngine] Could not load thresholds via tuner: {ex}")
 
     def _calculate_bonus(self, rule: Rule) -> int:
         if rule.cvss > 0:
@@ -188,15 +192,11 @@ class RuleEngine:
                 freq = max(event_count[rule_id], 2)  # log2(2) = 1 minimum score factor
                 scaled = int(r.weight * sev_factor * log2(freq))
                 scaled = min(scaled, 15)
-
-                if sev in ("high", "critical"):
-                    raw_dynamic += scaled
-                    scoring_justification[rule_id] += scaled
-                elif sev == "medium":
-                    medium_severity_count += 1
-
+                raw_dynamic += scaled
+                scoring_justification[rule_id] += scaled
+            
                 # Collect unique descriptions
-                if r.description and r.description not in reasons:
+                if r.description not in reasons:
                     reasons.append(r.description)
 
             # Risk classification
@@ -225,11 +225,13 @@ class RuleEngine:
             raw_dynamic += 10
             reasons.append(f"[BEHAVIOR] Diverse categories: {', '.join(seen_categories)}")
             
-
+        logger.info(f"[RuleEngine] Dynamic analysis: {len(events)} events, {len(rule_results)} rules triggered, "
+                    f"raw_dynamic={raw_dynamic}, raw_rule_bonus={raw_rule_bonus}, high_risk={high_risk}, "  
+                    f"net_flag={net_flag}, event_count={dict(event_count)}")
         # Normalize dynamic score and rule bonus
         dyn_scaled = int(min(raw_dynamic, 100) * 0.5)  # normalize to 0–50
         dyn_bonus = min(raw_rule_bonus, 20) # Max 20
-
+        logger.info(f"[RuleEngine] Scaled dynamic score: {dyn_scaled}, Rule bonus: {dyn_bonus}")
         return dyn_scaled, dyn_bonus, reasons, high_risk, net_flag, rule_results, scoring_justification
 
 

@@ -112,13 +112,13 @@
 - id: R11
   description: "TLS/SSL used but no certificate pinning detected"
   category: network
-  weight: 6
-  severity: high
+  weight: 3
+  severity: low
   condition: >
     "tls" in (event.get("tags") or [])
     and not event.get("metadata", {}).get("cert_pinning", False)
   tags: ["tls", "network", "crypto", "unencrypted"]
-  cvss: 7.2
+  cvss: 3.1
 
 - id: R12
   description: "Encrypted network activity involving native code — likely exfiltration"

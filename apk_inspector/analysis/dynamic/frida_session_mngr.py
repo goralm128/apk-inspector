@@ -90,7 +90,7 @@ class FridaSessionManager:
             # ─── JVM readiness probe ─────────────────────────────
             java_vm_ready = await session.wait_for_java_vm(
                 probe_path="frida/helpers/vm_probe.js",
-                timeout=60
+                timeout=30
             )
 
             if not java_vm_ready:

@@ -17,6 +17,7 @@ from apk_inspector.reports.models import Verdict
 from apk_inspector.utils.yara_utils import ensure_yara_models
 from apk_inspector.utils.logger import log_verdict_debug
 from apk_inspector.config.defaults import CONFIG_RULES_DIR
+from apk_inspector.utils.event_utils import aggregate_events
 
 
 class APKInspector:
@@ -71,8 +72,7 @@ class APKInspector:
                 raw_yara_matches = []
             yara_models = ensure_yara_models(raw_yara_matches)
             self.logger.info(f"[{package_name}] {len(yara_models)} validated YARA matches found.")
-            
-            # Load tag_rules from YAML file
+
             tag_rules_path = CONFIG_RULES_DIR / "tag_rules.yaml"
             try:
                 with tag_rules_path.open("r", encoding="utf-8") as f:
@@ -81,17 +81,15 @@ class APKInspector:
             except Exception as e:
                 self.logger.warning(f"[{package_name}] Failed to load tag rules from {tag_rules_path}: {e}")
                 tag_rules = {}
-            
+
             tag_inferencer = TagInferencer(tag_rules)
-            
-            # Build APK metadata once per run
+            self.rule_engine.set_tag_rules(tag_rules)
+
             apk_metadata = {
                 "package_name": package_name,
                 "apk_name": self.apk_path.name,
-                "apk_path": str(self.apk_path),               
+                "apk_path": str(self.apk_path)
             }
-            
-            self.rule_engine.set_tag_rules(tag_rules)
 
             dynamic_analyzer = DynamicAnalyzer(
                 hooks_dir=self.hooks_dir,
@@ -101,15 +99,18 @@ class APKInspector:
                 run_dir=self.run_dir,
                 timeout=self.timeout
             )
-            
+
             hook_metadata_map = dynamic_analyzer.hook_metadata_map
             self.report_builder.set_hook_metadata(hook_metadata_map)
-            
+
             dyn_res = dynamic_analyzer.analyze(package_name, apk_metadata=apk_metadata)
             events = dyn_res.get("events", [])
             hook_counts = dyn_res.get("hook_event_counts", {})
             self.logger.info(f"[{package_name}] Dynamic analysis collected {len(events)} events.")
-            
+
+            # Aggregate events for scoring
+            #aggregated_events = aggregate_events(events, window_ms=100)
+
             verdict = self.rule_engine.evaluate(
                 events=events,
                 yara_hits=[m.model_dump() for m in yara_models],
@@ -120,19 +121,25 @@ class APKInspector:
             self._log_verdict(package_name, verdict, events, raw_yara_matches, static_info)
 
             self.report_builder.set_static_analysis(yara_models, static_info)
-            
             self.report_builder.merge_hook_result({
-               "events": events,
+                "events": events,
                 "hook_event_counts": hook_counts,
                 "verdict": verdict
             })
+            
+            #final_report = self.report_builder.build()
 
-            final_report = self.report_builder.build()
+            final_report = self.report_builder._assemble_report(
+                events,
+                verdict,
+                getattr(verdict, "triggered_rule_results", [])
+            )
             return {**base_report, **final_report}
 
         except Exception as ex:
             self.logger.exception(f"[{package_name}] Fatal error during inspection: {ex}")
             return self._error_result(package_name, base_report, str(ex))
+
 
     def _ensure_decompiled(self, package_name: str):
         decompiled_dir = self.workspace.get_decompile_path(package_name)

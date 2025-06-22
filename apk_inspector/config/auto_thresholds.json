@@ -1,6 +1,6 @@
 {
   "suspicious_threshold": 35,
   "malicious_threshold": 75,
-  "dynamic_boost_threshold": 30
+  "dynamic_boost_threshold": 28
 }
 

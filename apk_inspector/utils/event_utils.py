@@ -31,8 +31,12 @@ def aggregate_events(events: List[Dict[str, any]], window_ms: int = 100) -> List
 
     # Ensure all timestamps are datetime objects
     for e in events:
-        if isinstance(e["timestamp"], str):
-            e["timestamp"] = datetime.fromisoformat(e["timestamp"].replace("Z", "+00:00"))
+        ts = e.get("timestamp")
+        if isinstance(ts, str):
+            e["timestamp"] = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        elif ts is None:
+            # Assign current time if timestamp is missing
+            e["timestamp"] = datetime.utcnow()
 
     # Group by (action, name, fd, category)
     grouped: Dict[Tuple, List[Dict[str, any]]] = defaultdict(list)

@@ -151,36 +151,26 @@ class YaraMatchEvaluator:
         reasons: List[str] = []
         validated_hits: List[YaraMatchModel] = []
 
-        logger.debug(f"[YARA] Scoring dictionary types: "
-                     f"category_score={type(category_score)}, "
-                     f"tag_score={type(tag_score)}, "
-                     f"severity_score={type(severity_score)}")
-        logger.debug(f"[YARA] Known tag_score keys: {sorted(tag_score.keys())}")
-        logger.debug(f"[YARA] Received {len(yara_hits)} raw YARA hits")
-
-        # --- Validate Hits ---
+        # --- Validate and Deduplicate Hits by (rule + category + severity) ---
+        unique_hit_keys = set()
         for index, hit in enumerate(yara_hits):
             try:
-                logger.debug(f"[YARA] Validating hit #{index}: {type(hit)}")
-                if isinstance(hit, YaraMatchModel):
-                    validated_hits.append(hit)
-                elif isinstance(hit, dict):
-                    validated_hits.append(YaraMatchModel.model_validate(hit))
-                else:
-                    logger.warning(f"[YARA] Unsupported hit type at index {index}: {type(hit)}")
-            except ValidationError as ve:
-                reasons.append(f"[ERROR] Invalid YARA match #{index}: {ve}")
-                logger.error(f"[YARA] Validation failed at index {index}: {ve}")
-            except Exception as ex:
-                reasons.append(f"[ERROR] Unexpected error in hit #{index}: {ex}")
-                logger.exception(f"[YARA] Unexpected error parsing hit #{index}: {ex}")
+                if isinstance(hit, dict):
+                    hit = YaraMatchModel.model_validate(hit)
+                elif not isinstance(hit, YaraMatchModel):
+                    continue  # skip unsupported types
 
-        logger.debug(f"[YARA] Successfully validated {len(validated_hits)} YARA hits")
-        
+                key = (hit.rule, hit.meta.get("category", "uncategorized"), hit.meta.get("severity", "medium"))
+                if key in unique_hit_keys:
+                    continue  # skip duplicates
+                unique_hit_keys.add(key)
+                validated_hits.append(hit)
+            except Exception as ex:
+                logger.warning(f"[YARA] Skipping invalid hit at index {index}: {ex}")
+
         severity_weights = {"low": 1, "medium": 2, "high": 3, "critical": 4}
         severity_sum = 0
 
-        # --- Score Each Validated Hit ---
         for hit in validated_hits:
             rule_id = hit.rule
             tags = [t.lower() for t in hit.tags]
@@ -205,15 +195,15 @@ class YaraMatchEvaluator:
             total_score += rule_score
             severity_sum += severity_weights.get(severity, 2)
 
-            reason_summary = (
-                f"[YARA][{severity.upper()}][{category}] {rule_id}: {desc} "
-                f"(score: {rule_score})"
+            reasons.append(
+                f"[YARA][{severity.upper()}][{category}] {rule_id}: {desc} (score: {rule_score})"
             )
-            reasons.append(reason_summary)
 
-        # --- Dynamic Normalization ---
-        max_raw = max(severity_sum * 20, 1)  # Prevent div by zero, 20 per high-severity match
-        normalized_score = min(int((total_score / max_raw) * 20), 20)
+        # --- Revised Normalization ---
+        # Use a higher denominator to reflect conservative scaling
+        denominator = max(severity_sum * 30, 1)  # ← adjust this multiplier as needed
+        normalized_score = int((total_score / denominator) * 20)
+        normalized_score = min(normalized_score, 20)
 
         logger.info(f"[YARA] Final raw_score={total_score}, severity_sum={severity_sum}, normalized={normalized_score}")
         return normalized_score, reasons
