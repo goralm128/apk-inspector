@@ -10,8 +10,8 @@
   };
 
   globalThis.runWhenJavaIsReady = ({
-    retryInterval = 500,
-    maxRetries = 30,
+    retryInterval = 100,
+    maxRetries = 2,
     verbose = true
   } = {}) => {
     if (globalThis._javaReadyPromise) return globalThis._javaReadyPromise;
@@ -277,8 +277,8 @@
 
   // ───── JVM Ready Signal ─────────────────────────────
   runWhenJavaIsReady({
-    retryInterval: 500,
-    maxRetries: 60,
+    retryInterval: 100,
+    maxRetries: 2,
     verbose: true
   }).then(() => {
     send({ type: 'jvm_ready' });

@@ -6,6 +6,7 @@ from apk_inspector.utils.logger import get_logger
 
 from pathlib import Path
 from typing import Dict, Any, Tuple
+from datetime import datetime
 
 
 def analyze_apk_and_summarize(
@@ -18,11 +19,10 @@ def analyze_apk_and_summarize(
 ) -> Tuple[Dict[str, Any], ApkSummary]:
     """
     Analyzes a single APK and produces both the full report and a summarized verdict.
-
-    Returns:
-        Tuple[Dict[str, Any], ApkSummary]: Full JSON-style report and simplified summary.
     """
     logger = get_logger()
+    start_time = datetime.now()
+    logger.info(f"[~] Starting analysis for: {apk_path.name}")
 
     try:
         apk_manager = APKManager(logger=logger)
@@ -34,14 +34,12 @@ def analyze_apk_and_summarize(
             return _error_report(apk_path, msg), ApkSummary.from_dict({"error": msg})
  
         installed = apk_manager.install_apk(apk_path)
-
         if not installed:
             msg = f"Failed to install {apk_path.name}"
             logger.error(f"[✗] {msg}")
             return _error_report(apk_path, msg), ApkSummary.from_dict({"error": msg})
         
         try:
-
             inspector = create_apk_inspector(
                 apk_path=apk_path,
                 hooks_dir=hooks_dir,
@@ -51,24 +49,24 @@ def analyze_apk_and_summarize(
             )
 
             report = inspector.run()
-            
-        finally:
-             if installed and not keep_installed:
-                apk_manager.uninstall_package(package_name)
 
-        # If inspector encountered a fatal error, it embeds an "error" key.
+        finally:
+            if installed and not keep_installed:
+                apk_manager.uninstall_package(package_name)
+                logger.info(f"[~] Uninstalled {package_name} after analysis.")
+
         if "error" in report:
             logger.warning(f"[{package_name}] Analysis returned error: {report['error']}")
             return report, ApkSummary.from_dict({"error": report.get("error", "Unknown analysis error")})
 
-        # Build summary from valid report
         summary = ApkSummaryBuilder(report).build_summary()
+        duration = (datetime.now() - start_time).total_seconds()
+        logger.info(f"[✓] Completed analysis for {package_name} in {duration:.2f}s")
         return report, summary
 
     except Exception as ex:
         logger.exception(f"[✗] Unexpected failure analyzing {apk_path.name}")
-        return _error_report(apk_path, str(ex)), ApkSummary.from_dict({"error": str(e)})
-
+        return _error_report(apk_path, str(ex)), ApkSummary.from_dict({"error": str(ex)})
 
 def _error_report(apk_path: Path, error_msg: str = "Unknown error") -> Dict[str, Any]:
     return {

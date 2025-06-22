@@ -4,6 +4,7 @@ from apk_inspector.utils.yara_utils import YaraMatchEvaluator
 from apk_inspector.heuristics.static_heuristics import StaticHeuristicEvaluator
 from apk_inspector.reports.models import Verdict, TriggeredRuleResult
 from apk_inspector.config.scoring_loader import load_scoring_profile
+from apk_inspector.utils.scoring_utils import compute_cvss_band
 from apk_inspector.config.defaults import DEFAULT_SCORING_PROFILE_PATH
 from apk_inspector.utils.logger import get_logger
 from pathlib import Path
@@ -150,93 +151,69 @@ class RuleEngine:
             return None
 
 
-    def _evaluate_dynamic(self, events: List[Dict[str, Any]]) -> Tuple[int, int, List[str], int, bool, List[TriggeredRuleResult]]:
+    def _evaluate_dynamic(self, events: List[Dict]) -> Tuple[int, int, List[str], int, bool, List[TriggeredRuleResult], Dict[str, int]]:
         dynamic_score = 0
-        rule_bonus_score = 0  # renamed from total_score for clarity
-        reasons: List[str] = []
-        rule_results: List[TriggeredRuleResult] = []
+        rule_bonus_score = 0
+        reasons = []
+        rule_results = []
         high_risk = 0
         net_flag = False
+        event_count = defaultdict(int)
+        seen_categories = set()
+        combo_applied = False
+        scoring_justification = defaultdict(int)
 
-        event_count_by_rule = defaultdict(int)
-        all_categories = set()
-        composite_bonus_applied = False
+        for idx, evt in enumerate(events):
+            triggered = self._apply_rules_to_event(evt)
+            if not triggered:
+                evt.setdefault("metadata", {})["risk_level"] = "low"
+                continue
 
-        logger.info(f"[RuleEngine] Starting dynamic evaluation: {len(events)} events")
-  
-        for idx, event in enumerate(events):
-            logger.info(f"[Event-{idx}] Event preview: {json.dumps(event, indent=2, default=default_serializer)[:1000]}")
-            if not isinstance(event, dict):
-                try:
-                    event = asdict(event)
-                except Exception as ex:
-                    logger.warning(f"[RuleEngine] Skipping invalid event at index {idx}: {ex}")
-                    continue
+            bonus, rules = triggered
+            rule_bonus_score += bonus
 
-            metadata = event.setdefault("metadata", {})
-            triggered = self._apply_rules_to_event(event)
+            for r in rules:
+                if r.severity.lower() not in ("high", "critical"):
+                    continue  # skip lower severities for scaled dynamic score
 
-            if triggered:
-                bonus, triggered_rules = triggered
-                rule_bonus_score += bonus
+                event_count[r.rule_id] += 1
+                seen_categories.add(r.category)
 
-                logger.info(f"[Event-{idx}] Triggered rules: {[r.rule_id for r in triggered_rules]}")
-                logger.info(f"[Event-{idx}] Bonus from rules: {bonus}")
+                sev_factor = self.SEVERITY_SCORE.get(r.severity.lower(), 1)
+                scaled = int(r.weight * sev_factor * log2(event_count[r.rule_id] + 1))
+                scaled = min(scaled, 15)  # cap to prevent runaway score
+                dynamic_score += scaled
 
-                for r in triggered_rules:
-                    event_count_by_rule[r.rule_id] += 1
-                    all_categories.add(r.category)
+                scoring_justification[r.rule_id] += scaled
 
-                for r in triggered_rules:
-                    if r.rule_source != "dynamic":
-                        continue
-                    base_weight = r.weight
-                    sev_factor = self.SEVERITY_SCORE.get(r.severity.lower(), 1)
-                    count = event_count_by_rule[r.rule_id]
-                    scaled = int(base_weight * sev_factor * log2(count + 1))
-                    scaled = min(scaled, 15)  # Cap individual rule impact
-                    logger.info(f"[Event-{idx}] Rule {r.rule_id}: weight={base_weight}, severity={r.severity}, count={count}, scaled={scaled}")
-                    dynamic_score += scaled
+                if r.description not in reasons:
+                    reasons.append(r.description)
 
-                rule_results.extend(triggered_rules)
-
-                for r in triggered_rules:
-                    if r.description not in reasons:
-                        reasons.append(r.description)
-
-                severities = [r.severity for r in triggered_rules]
-                if any(s in ("high", "critical") for s in severities):
-                    metadata["risk_level"] = "high"
-                    high_risk += 1
-                else:
-                    metadata["risk_level"] = max(severities, key=lambda s: self.SEVERITY_SCORE.get(s, 0), default="low")
+            severities = [r.severity for r in rules]
+            if any(s in ("high", "critical") for s in severities):
+                evt["metadata"]["risk_level"] = "high"
+                high_risk += 1
             else:
-                metadata["risk_level"] = "low"
+                lvl = max(severities, key=lambda s: self.SEVERITY_SCORE.get(s, 0), default="low")
+                evt["metadata"]["risk_level"] = lvl
 
-            # Composite threat pattern detection (once)
-            if not composite_bonus_applied:
-                tags = set(event.get("tags", []))
-                if {"reflection", "dex_load", "http"}.issubset(tags):
-                    dynamic_score += 15
-                    reasons.append("[COMBO] Reflection + Dex Loading + Network activity observed")
-                    logger.info(f"[RuleEngine] Composite threat pattern detected in Event-{idx} → +15")
-                    composite_bonus_applied = True
+            if not combo_applied and {"reflection", "dex_load", "http"}.issubset(set(evt.get("tags", []))):
+                dynamic_score += 15
+                reasons.append("[COMBO] Reflection + Dex + Network")
+                combo_applied = True
 
-        logger.info(f"[RuleEngine] Unique rule categories triggered: {list(all_categories)}")
+            rule_results.extend(rules)
 
-        if len(all_categories) >= 3:
+        if len(seen_categories) >= 3:
             dynamic_score += 10
-            reasons.append(f"[BEHAVIOR] Diverse behavior categories: {', '.join(all_categories)}")
-            logger.info(f"[RuleEngine] Behavior diversity bonus applied (+10)")
+            reasons.append(f"[BEHAVIOR] Diverse categories: {', '.join(seen_categories)}")
 
-        logger.info(f"[RuleEngine] Final dynamic_score={dynamic_score}, rule_bonus_score={rule_bonus_score}, high_risk_events={high_risk}, rules_triggered={len(rule_results)}")
-        dynamic_score = min(dynamic_score, 70)
-        return dynamic_score, rule_bonus_score, reasons, high_risk, net_flag, rule_results
+        return dynamic_score, rule_bonus_score, reasons, high_risk, net_flag, rule_results, dict(scoring_justification)
 
     def _evaluate_static(self, static_info: Dict[str, Any]) -> Tuple[int, List[str]]:
         try:
             score, reasons = StaticHeuristicEvaluator.evaluate(static_info)
-            return min(score, 20), [f"[STATIC] {r}" for r in reasons]
+            return score, [f"[STATIC] {r}" for r in reasons]
         except Exception as ex:
             logger.exception("[RuleEngine] Static analysis failed")
             return 0, [f"[ERROR] Static analysis failure: {ex}"]
@@ -257,7 +234,7 @@ class RuleEngine:
                 tag_score=self.TAG_SCORE,
                 severity_score=self.SEVERITY_SCORE
             )
-            return min(score, 10), [f"[YARA] {r}" for r in reasons]
+            return score, [f"[YARA] {r}" for r in reasons]
         except Exception as ex:
             logger.exception("[RuleEngine] YARA evaluation failed")
             return 0, [f"[ERROR] YARA evaluation failure: {ex}"]
@@ -321,25 +298,11 @@ class RuleEngine:
 
         return score, label, justification
         
-    def _compute_cvss_band(self, events: List[Dict[str, Any]]) -> str:
-        cvss_scores = []
-        for e in events:
-            if not isinstance(e, dict):
-                continue
-            if e.get('hook') == 'frida_helpers':
-                continue
-            rule_details = e.get("metadata", {}).get("triggered_rule_details", [])
-            for rule in rule_details:
-                if isinstance(rule, dict):
-                    cvss_scores.append(rule.get("cvss", 0.0))
+    def _compute_cvss_band(self, rules: List[TriggeredRuleResult]) -> str:
+        cvss_scores = [r.cvss for r in rules if isinstance(r, TriggeredRuleResult)]
         max_cvss = max(cvss_scores, default=0.0)
-        if max_cvss >= 9.0: return "Critical"
-        if max_cvss >= 7.0: return "High"
-        if max_cvss >= 4.0: return "Medium"
-        if max_cvss > 0.0: return "Low"
-        return "Unknown"
+        return compute_cvss_band(max_cvss)
     
-
     def evaluate(
         self,
         events: List[Dict[str, Any]],
@@ -347,35 +310,51 @@ class RuleEngine:
         yara_hits: Optional[List[Dict[str, Any]]] = None,
         hook_coverage: Optional[Dict[str, int]] = None
     ) -> Verdict:
-        
+
         logger.info(f"[RuleEngine] Evaluation started: {len(events)} events")
 
-        static_score, static_reasons = self._evaluate_static(static_info) if static_info else (0, [])
-        dynamic_scaled_score, dynamic_rule_bonus, dynamic_reasons, high_risk, net_flag, rule_results = self._evaluate_dynamic(events)
+        raw_static_score, static_reasons = self._evaluate_static(static_info) if static_info else (0, [])
+        raw_dynamic_scaled, raw_dynamic_rule_bonus, dynamic_reasons, high_risk, net_flag, rule_results, scoring_justification = self._evaluate_dynamic(events)
         hook_score, hook_reasons = self._evaluate_hook_coverage(hook_coverage) if hook_coverage else (0, [])
-        yara_score, yara_reasons = self._evaluate_yara(yara_hits) if yara_hits else (0, [])
+        raw_yara_score, yara_reasons = self._evaluate_yara(yara_hits) if yara_hits else (0, [])
+        
+         # --- Normalize to target weights ---
+        static_score = min(raw_static_score, 10)
+        dynamic_scaled_score = min(raw_dynamic_scaled, 50)
+        dynamic_rule_bonus = min(raw_dynamic_rule_bonus, 20)
+        yara_score = min(raw_yara_score, 20)
 
-        total_score = static_score + dynamic_rule_bonus + hook_score + yara_score
+
+        total_score = static_score + dynamic_scaled_score + dynamic_rule_bonus + yara_score
         capped_total_score = min(total_score, 100)
 
-        reasons = static_reasons + dynamic_reasons + yara_reasons + hook_reasons
-
+        all_reasons = static_reasons + dynamic_reasons + yara_reasons + hook_reasons
+        
+        if hook_score == 0:
+            all_reasons.append("[⚠DYNAMIC] No hooks fired – analysis coverage may be incomplete")
+        elif hook_score < 5:
+            all_reasons.append("[ℹDYNAMIC] Limited hook coverage")
+        
         label = self._label_from_score(capped_total_score, dynamic_scaled_score)
         logger.info(f"[RuleEngine] Final score={capped_total_score}, label={label}, dynamic_scaled_score={dynamic_scaled_score}")
 
         if not rule_results:
             logger.warning("[RuleEngine] No rules were triggered — check hook coverage and rule effectiveness.")
+            
+        cvss_band = self._compute_cvss_band(rule_results)
 
         return Verdict(
             score=capped_total_score,
             label=label,
-            reasons=reasons,
+            reasons=all_reasons,
             high_risk_event_count=high_risk,
             network_activity_detected=net_flag,
-            cvss_risk_band=self._compute_cvss_band(events),
+            cvss_risk_band=cvss_band,
             static_score=static_score,
-            dynamic_score=dynamic_rule_bonus,
+            dynamic_score=dynamic_scaled_score,
+            dynamic_rule_bonus=dynamic_rule_bonus,
             yara_score=yara_score,
-            triggered_rule_results=rule_results
+            hook_score=hook_score,
+            triggered_rule_results=rule_results,
+            scoring_justification=scoring_justification
         )
-

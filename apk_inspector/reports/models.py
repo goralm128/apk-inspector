@@ -65,10 +65,11 @@ class Verdict:
     cvss_risk_band: str = "Unknown"
     static_score: int = 0
     dynamic_score: int = 0
+    dynamic_rule_bonus: int = 0
     yara_score: int = 0
     hook_score: int = 0
     triggered_rule_results: List[TriggeredRuleResult] = field(default_factory=list)
-    scoring_justification: Dict[str, int] = field(default_factory=dict)  # e.g., {'dex_loading': 15, 'frida': 10}
+    scoring_justification: Dict[str, int] = field(default_factory=dict)
     
 @dataclass
 class ApkSummary:

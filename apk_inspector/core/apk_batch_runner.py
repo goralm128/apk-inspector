@@ -59,7 +59,7 @@ class APKBatchRunner:
                     timeout=self.timeout
                 )
                 #  Save individual full report
-                self.report_saver.save_report(full_report)
+                #self.report_saver.save_report(full_report)
 
                 results.append((full_report, summary))
                 # Force GC and Frida shutdown

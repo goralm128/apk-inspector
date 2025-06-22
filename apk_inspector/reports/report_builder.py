@@ -143,12 +143,14 @@ class APKReportBuilder:
                 "risk_breakdown": {
                     "static_score": verdict.static_score,
                     "dynamic_score": verdict.dynamic_score,
+                    "dynamic_rule_bonus": verdict.dynamic_rule_bonus,
                     "yara_score": verdict.yara_score,
+                    "hook_score": verdict.hook_score,
                     "total_score": verdict.score
                 }
             }
         }
-
+    
     def build(self) -> Dict[str, Any]:
         logger.info(f"[{self.package}] Building full report...")
         try:

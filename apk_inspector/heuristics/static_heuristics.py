@@ -70,5 +70,22 @@ class StaticHeuristicEvaluator:
             score += 5
             reasons.append(f"[MEDIUM] Logs sensitive data ({hint}) in {file}")
 
-
+        #Flag test-signed APKs
+        cert = static_info.get("certificate", {})
+        if cert.get("is_testkey", False):
+            score += 10
+            reasons.append("[HIGH] APK signed with test key")
+         
+        # Detect excessive .dex files or large .dex sizes    
+        dex_info = static_info.get("dex_info", {})
+        if dex_info.get("dex_count", 0) > 1:
+            score += 10; reasons.append("[MEDIUM] Multiple DEX files detected")
+        if dex_info.get("max_dex_size_mb", 0) > 10:
+            score += 5; reasons.append("[LOW] Large DEX file (>10 MB)")
+        
+        # Detect dangerous intent filters in manifest    
+        for intent in static_info.get("intent_filters", []):
+            if intent in {"ACTION_BOOT_COMPLETED","INSTALL_PACKAGES"}:
+                score += 10; reasons.append(f"[HIGH] Dangerous intent filter: {intent}")
+                
         return score, reasons
