@@ -1,5 +1,7 @@
 from pathlib import Path
 from typing import Dict, Any, List
+from pathlib import Path
+import yaml
 from datetime import datetime, timezone
 from apk_inspector.analysis.dynamic.hook_descovery import discover_hooks
 from apk_inspector.analysis.dynamic.dynamic_analyzer import DynamicAnalyzer
@@ -14,7 +16,7 @@ from apk_inspector.core.decompiler import decompile_apk
 from apk_inspector.reports.models import Verdict
 from apk_inspector.utils.yara_utils import ensure_yara_models
 from apk_inspector.utils.logger import log_verdict_debug
-
+from apk_inspector.config.defaults import CONFIG_RULES_DIR
 
 
 class APKInspector:
@@ -70,13 +72,16 @@ class APKInspector:
             yara_models = ensure_yara_models(raw_yara_matches)
             self.logger.info(f"[{package_name}] {len(yara_models)} validated YARA matches found.")
             
-            tag_rules = {
-                "network": ["http", "connect", "socket"],
-                "crypto": ["cipher", "encrypt", "decrypt"],
-                "file": ["open", "read", "write", "file"],
-                "native": ["dlopen", "execve", "fork"],
-                # Add more
-            }
+            # Load tag_rules from YAML file
+            tag_rules_path = CONFIG_RULES_DIR / "tag_rules.yaml"
+            try:
+                with tag_rules_path.open("r", encoding="utf-8") as f:
+                    tag_rules = yaml.safe_load(f) or {}
+                self.logger.info(f"[{package_name}] Loaded {len(tag_rules)} tag rule groups from {tag_rules_path.name}")
+            except Exception as e:
+                self.logger.warning(f"[{package_name}] Failed to load tag rules from {tag_rules_path}: {e}")
+                tag_rules = {}
+            
             tag_inferencer = TagInferencer(tag_rules)
             
             # Build APK metadata once per run
@@ -106,7 +111,8 @@ class APKInspector:
             verdict = self.rule_engine.evaluate(
                 events=events,
                 yara_hits=[m.model_dump() for m in yara_models],
-                static_info=static_info
+                static_info=static_info,
+                hook_coverage=hook_counts,
             )
 
             self._log_verdict(package_name, verdict, events, raw_yara_matches, static_info)

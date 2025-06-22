@@ -1,80 +1,132 @@
 - id: R1
-  description: "Accessed sensitive file (e.g., token, secret, key)"
+  description: "Sensitive file accessed — token, secret, or key"
   category: data_leak
-  weight: 5
+  weight: 6
   severity: medium
-  condition: "'token' in event.get('path', '') or event.get('classification') == 'sensitive'"
-  tags: ["token", "key", "filesystem", "sensitive"]
-  cvss: 5.5
+  condition: >
+    (isinstance(event.get("tags"), list) and any(tag in event["tags"] for tag in ["token", "key", "sensitive", "secret"]))
+    or (isinstance(event.get("path"), str) and any(k in event["path"] for k in ["token", "secret", "key"]))
+  tags: ["token", "key", "filesystem", "sensitive", "secret"]
+  cvss: 6.0
 
 - id: R2
-  description: "Connected to public IP address"
+  description: "Connection to public or blacklisted IP address"
   category: network
   weight: 4
   severity: medium
-  condition: "event.get('address', {}).get('is_private') is False or 'blacklisted_ip' in event.get('tags', [])"
+  condition: >
+    event.get("address", {}).get("is_private") is False
+    or "blacklisted_ip" in (event.get("tags") or [])
   tags: ["network", "external", "blacklisted_ip"]
-  cvss: 4.3
+  cvss: 4.5
 
 - id: R3
-  description: "High-volume data transfer via write"
+  description: "High-volume data write outside app storage"
   category: exfiltration
-  weight: 5
+  weight: 6
   severity: high
-  condition: "event.get('event') == 'write' and event.get('length', 0) > 8192 and event.get('path_type') != 'app_storage'"
+  condition: >
+    event.get("event") == "write"
+    and event.get("length", 0) > 8192
+    and event.get("path_type") != "app_storage"
   tags: ["exfiltration", "data", "write"]
-  cvss: 6.8
+  cvss: 7.0
 
 - id: R4
-  description: "Suspicious file access in system directory"
+  description: "File accessed in protected system directory"
   category: privilege_escalation
   weight: 6
   severity: high
-  condition: "event.get('path_type') == 'system_access'"
+  condition: >
+    event.get("path_type") == "system_access"
   tags: ["filesystem", "system", "privilege"]
-  cvss: 6.1
+  cvss: 6.3
 
 - id: R5
-  description: "Runtime connection to suspicious domain"
+  description: "C2 communication to known suspicious domain"
   category: c2
   weight: 7
   severity: high
-  condition: "event.get('data') and any(domain in str(event['data']) for domain in ['example.com', 'evil.org', 'malicious.net'])"
-  tags: ["c2", "dns", "ip_address"]
+  condition: >
+    isinstance(event.get("data"), (str, bytes))
+    and any(d in str(event["data"]) for d in ["example.com", "evil.org", "malicious.net"])
+  tags: ["c2", "dns", "ip_address", "network"]
   cvss: 6.5
 
 - id: R6
-  description: "Abuse of accessibility services"
+  description: "Accessibility service abuse — UI takeover possible"
   category: accessibility_abuse
   weight: 7
   severity: high
-  condition: "event.get('category') == 'accessibility_abuse'"
+  condition: >
+    event.get("category", "") == "accessibility_abuse"
+    or (isinstance(event.get("tags"), list) and any(tag in event["tags"] for tag in ["accessibility", "overlay", "clickjacking"]))
   tags: ["accessibility", "overlay", "clickjacking"]
-  cvss: 7.1
+  cvss: 7.2
 
 - id: R7
-  description: "Usage of reflection (dynamic method invocation)"
+  description: "Reflection APIs used — potential evasion or dynamic execution"
   category: reflection
   weight: 6
   severity: high
-  condition: "event.get('category') == 'reflection' or 'reflection' in event.get('tags', [])"
+  condition: >
+    "reflection" in (event.get("tags") or [])
+    or ("invoke" in (event.get("hook") or "").lower())
   tags: ["reflection", "evasion"]
   cvss: 6.9
 
 - id: R8
-  description: "Dynamic loading of DEX or shared libraries"
+  description: "Dynamic loading of code — dex or native libraries"
   category: dex_loading
   weight: 6
   severity: high
-  condition: "'dlopen' in event.get('hook', '') or 'Class.forName' in event.get('hook', '') or 'dex_load' in event.get('tags', [])"
+  condition: >
+    (isinstance(event.get("hook"), str) and any(k in event["hook"] for k in ["dlopen", "Class.forName", "System.loadLibrary"]))
+    or ("dex_load" in (event.get("tags") or []))
   tags: ["code_injection", "jni", "native", "dex_load"]
   cvss: 7.0
 
 - id: R9
-  description: "Possible Frida or instrumentation detection"
+  description: "Frida or instrumentation artifact detected"
   category: evasion
   weight: 8
   severity: high
-  condition: "event.get('args') and event['args'].get('arg0') and 'frida' in str(event['args']['arg0'])"
+  condition: >
+    "frida" in str(event.get("args", {}).get("arg0", ""))
+    or "gum-js-loop" in (event.get("hook") or "")
+    or "rpc.exports" in str(event.get("stack", ""))
   tags: ["frida", "evasion", "hooking"]
   cvss: 7.5
+
+- id: R10
+  description: "Use of crypto-related native libraries"
+  category: crypto_usage
+  weight: 5
+  severity: medium
+  condition: >
+    (isinstance(event.get("tags"), list) and any(tag in event["tags"] for tag in ["tls", "openssl"]))
+    or (isinstance(event.get("hook"), str) and ("ssl" in event["hook"].lower() or "tls" in event["hook"].lower()))
+  tags: ["tls", "openssl"]
+  cvss: 6.0
+
+- id: R11
+  description: "TLS/SSL used but no certificate pinning detected"
+  category: network
+  weight: 6
+  severity: high
+  condition: >
+    "tls" in (event.get("tags") or [])
+    and not event.get("metadata", {}).get("cert_pinning", False)
+  tags: ["tls", "network", "crypto", "unencrypted"]
+  cvss: 7.2
+
+- id: R12
+  description: "Encrypted network activity involving native code — likely exfiltration"
+  category: exfiltration
+  weight: 7
+  severity: critical
+  condition: >
+    isinstance(event.get("tags"), list)
+    and all(tag in event["tags"] for tag in ["native", "encrypted", "network"])
+  tags: ["exfiltration", "encrypted", "network", "native"]
+  cvss: 8.1

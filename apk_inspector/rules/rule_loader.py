@@ -15,11 +15,23 @@ def load_rules_from_yaml(yaml_path: Path) -> List[Rule]:
     for entry in raw_rules:
         rule_id = entry.get("id", "UNKNOWN")
         try:
-            # Build the safe lambda
             condition_fn = safe_lambda(entry["condition"])
 
-            # Dry run on dummy input
-            test_event = {"data": "example.com"}
+            # Dry-run test event to validate lambda logic
+            test_event = {
+                "data": "",
+                "tags": [],
+                "path": "",
+                "hook": "",
+                "category": "",
+                "metadata": {"cert_pinning": False},
+                "args": {"arg0": ""},
+                "stack": "",
+                "event": "",
+                "length": 0,
+                "path_type": "",
+                "address": {"is_private": True},
+            }
             _ = condition_fn(test_event)
 
             rule = Rule(
@@ -34,17 +46,17 @@ def load_rules_from_yaml(yaml_path: Path) -> List[Rule]:
                 disabled=False
             )
         except Exception as ex:
-            logger.warning(f"[!] Rule {rule_id} disabled due to error: {ex}")
+            logger.warning(f"[!] Rule {rule_id} will not be disabled but raised: {ex} → condition: {entry.get('condition')}")
             rule = Rule(
                 id=entry.get("id", "UNKNOWN"),
-                description=entry.get("description", "Invalid rule"),
+                description=entry.get("description", "Fallback rule"),
                 category=entry.get("category", "uncategorized"),
-                weight=0,
-                condition=lambda e: False,  # Always false
+                weight=entry.get("weight", 0),
+                condition=condition_fn if 'condition_fn' in locals() else (lambda e: False),
                 tags=entry.get("tags", []),
-                cvss=0.0,
-                severity="low",
-                disabled=True
+                cvss=entry.get("cvss", 0.0),
+                severity=entry.get("severity", "low"),
+                disabled=False
             )
 
         rules.append(rule)

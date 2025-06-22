@@ -68,7 +68,7 @@ class ApkSummaryBuilder:
                 yara_match_count=yara_match_count,
                 top_triggered_rules=top_triggered,
                 cvss_risk_band=cvss_band,
-                risk_breakdown=self.report.get("risk_breakdown", {}),
+                risk_breakdown=self.report.get("report_summary", {}).get("risk_breakdown", {}),
                 error=""
             )
             

@@ -42,16 +42,18 @@ class Event:
 class TriggeredRuleResult:
     rule_id: str
     severity: str
+    severity_score: int
     cvss: float
     weight: int
     bonus: int
-    classification: str
     description: str
     tags: List[str]
+    category: str
     event_id: Optional[str] = None
-    technique_id: Optional[str] = None     # e.g., T1059
-    tactic: Optional[str] = None           # e.g., Execution
-    rule_source: str = "dynamic"           # static | dynamic | yara
+    technique_id: Optional[str] = None # e.g., MITRE ATT&CK ID like T1059
+    tactic: Optional[str] = None # e.g., MITRE ATT&CK tactic like Execution
+    rule_source: str = "dynamic" # Could be: static | dynamic | yara
+    verdict: Optional[str] = None       # Optional: used for final classification/labeling
 
 @dataclass
 class Verdict:

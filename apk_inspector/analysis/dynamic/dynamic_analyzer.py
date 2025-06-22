@@ -9,8 +9,6 @@ from apk_inspector.utils.file_utils import deduplicate_events, is_private_ip
 from apk_inspector.utils.fs_utils import extract_file_path
 from apk_inspector.analysis.data_classifier import classify_path
 from tools.adb_tools import is_device_connected, force_stop_app
-from apk_inspector.rules.rule_engine import RuleEngine
-from apk_inspector.analysis.tag_inferencer import TagInferencer
 from apk_inspector.analysis.dynamic.hook_descovery import extract_metadata_from_hook
 
 

@@ -1,0 +1,214 @@
+token:
+  - "\\btoken\\b"
+  - "auth_token"
+  - "access_token"
+
+key:
+  - "private[_\\-]?key"
+  - "api[_\\-]?key"
+  - "secret[_\\-]?key"
+
+filesystem:
+  - "\\bfile\\b"
+  - "/data/"
+  - "/sdcard/"
+  - "open\\("
+  - "read\\("
+  - "write\\("
+
+sensitive:
+  - "password"
+  - "credential"
+  - "secret"
+  - "user[_\\-]?info"
+  - "auth"
+
+network:
+  - "http[s]?://"
+  - "socket"
+  - "connect"
+  - "\\bip\\b"
+  - "GET "
+  - "POST "
+
+external:
+  - "\\b(8\\.8\\.8\\.8|1\\.1\\.1\\.1)\\b"
+  - "external_url"
+  - "\\bpublic\\b"
+
+blacklisted_ip:
+  - "\\b(45\\.|185\\.|103\\.)\\b"
+  - "malicious\\.net"
+  - "evil\\.org"
+
+ip_address:
+  - "\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}\\b"
+
+dns:
+  - "resolve"
+  - "gethostby"
+  - "dns_query"
+
+http:
+  - "http[s]?://"
+
+reflection:
+  - "Class\\.forName"
+  - "Method\\.invoke"
+  - "reflect"
+
+dex_load:
+  - "dexclassloader"
+  - "dex_load"
+  - "dlopen"
+  - "loadlibrary"
+
+native:
+  - "native"
+  - "libc"
+  - "jni"
+  - "execve"
+  - "fork"
+
+code_injection:
+  - "injection"
+  - "shellcode"
+  - "r0payload"
+  - "loadDex"
+
+evasion:
+  - "bypass"
+  - "root_check"
+  - "hide"
+  - "emulator"
+  - "instrumentation"
+
+frida:
+  - "frida"
+  - "gum\\."
+  - "Interceptor\\.attach"
+
+hooking:
+  - "hook_"
+  - "intercept"
+  - "override"
+
+exfiltration:
+  - "upload"
+  - "send_data"
+  - "write_large"
+  - "stream"
+
+c2:
+  - "command and control"
+  - "c2_server"
+  - "checkin"
+  - "beacon"
+  - "evil\\.org"
+
+data:
+  - "payload"
+  - "data="
+
+write:
+  - "\\bwrite\\b"
+  - "fwrite"
+  - "FileOutputStream"
+
+accessibility:
+  - "accessibilityservice"
+  - "accessibility_event"
+
+overlay:
+  - "TYPE_SYSTEM_ALERT"
+  - "TYPE_APPLICATION_OVERLAY"
+  - "drawOver"
+
+clickjacking:
+  - "hidden_view"
+  - "touch_intercept"
+  - "click_invisible"
+
+crypto:
+  - "cipher"
+  - "encrypt"
+  - "decrypt"
+  - "RSA"
+  - "AES"
+
+weak_crypto:
+  - "ECB"
+  - "DES"
+  - "MD5"
+  - "Base64"
+  - "short_key"
+
+base64:
+  - "base64"
+  - "=="
+  - "decode"
+
+entropy:
+  - "[a-zA-Z0-9+/]{32,}=="
+
+privilege:
+  - "system_access"
+  - "chmod"
+  - "su"
+  - "root"
+
+system:
+  - "/system/"
+  - "/bin/"
+  - "/sbin/"
+  - "/dev/"
+
+su:
+  - "\\bsu\\b"
+
+root:
+  - "root_detect"
+  - "isRooted"
+  - "check_root"
+
+automation:
+  - "monkeyrunner"
+  - "uiautomator"
+  - "auto_click"
+
+obfuscation:
+  - "junk_code"
+  - "obfuscate"
+  - "packers"
+
+xor:
+  - "xor\\s*\\("
+  - "\\^"
+
+keylogger:
+  - "keypress"
+  - "keystroke"
+  - "keyevent"
+
+tls:
+  - "\\bSSLv3\\b"
+  - "\\bTLSv1\\b"
+  - "\\bTLSv1.2\\b"
+  - "\\bTLSv1.3\\b"
+  - "ssl_socket"
+  - "tls_handshake"
+
+openssl:
+  - "libssl"
+  - "libcrypto"
+  - "openssl"
+  - "BIO_"
+  - "SSL_"
+  - "EVP_"
+
+encrypted:
+  - "\\bencrypt\\b"
+  - "\\bdecrypt\\b"
+  - "encrypted_data"
+  - "crypto_context"
+

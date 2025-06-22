@@ -11,6 +11,12 @@ category_score:
   malicious_behavior: 30
   system_behavior: 15
   sensitive_string: 10
+  data_leak: 15
+  network: 10
+  exfiltration: 20
+  privilege_escalation: 15
+  c2: 25
+  evasion: 20
 tag_score:
    # UI/Permission Abuse
   overlay: 10
@@ -19,6 +25,10 @@ tag_score:
   system_alert: 10
   phishing: 15
   ui_hijack: 15
+  tls: 10
+  openssl: 10
+  encrypted: 10
+  unencrypted: 10
 
   # Code & Runtime Behavior
   dex: 10
