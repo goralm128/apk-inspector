@@ -176,80 +176,44 @@ class YaraMatchEvaluator:
                 logger.exception(f"[YARA] Unexpected error parsing hit #{index}: {ex}")
 
         logger.debug(f"[YARA] Successfully validated {len(validated_hits)} YARA hits")
+        
+        severity_weights = {"low": 1, "medium": 2, "high": 3, "critical": 4}
+        severity_sum = 0
 
         # --- Score Each Validated Hit ---
-        for index, hit in enumerate(validated_hits):
+        for hit in validated_hits:
+            rule_id = hit.rule
+            tags = [t.lower() for t in hit.tags]
+            meta = hit.meta or {}
+
+            desc = str(meta.get("description", rule_id))
+            category = str(meta.get("category", "uncategorized")).lower()
+            severity = str(meta.get("severity", "medium")).lower()
+            confidence = str(meta.get("confidence", "50"))
+
+            category_pts = category_score.get(category, 0)
+            severity_pts = severity_score.get(severity, 10)
+            tag_pts = sum(tag_score.get(tag, 0) for tag in tags)
+
+            rule_score = category_pts + severity_pts + tag_pts
             try:
-                rule_id = hit.rule
-                tags = hit.tags
-                
-                normalized_tag_score = {k.lower(): v for k, v in tag_score.items()}
-                normalized_tags = [t.lower().strip() for t in tags]
+                if int(confidence) >= 90:
+                    rule_score += 5
+            except ValueError:
+                pass
 
-                meta = hit.meta or {}
+            total_score += rule_score
+            severity_sum += severity_weights.get(severity, 2)
 
-                desc = str(meta.get("description", rule_id))
-                category = str(meta.get("category", "uncategorized")).lower()
-                severity = str(meta.get("severity", "medium")).lower()
-                confidence = str(meta.get("confidence", "50"))
-                impact = meta.get("impact")
-                family = meta.get("malware_family")
+            reason_summary = (
+                f"[YARA][{severity.upper()}][{category}] {rule_id}: {desc} "
+                f"(score: {rule_score})"
+            )
+            reasons.append(reason_summary)
 
-                logger.debug(f"[YARA:{rule_id}] Evaluating hit #{index}")
-                logger.debug(f"[YARA:{rule_id}] Tags: {tags}")
-                logger.debug(f"[YARA:{rule_id}] Meta: category={category}, severity={severity}, confidence={confidence}")
+        # --- Dynamic Normalization ---
+        max_raw = max(severity_sum * 20, 1)  # Prevent div by zero, 20 per high-severity match
+        normalized_score = min(int((total_score / max_raw) * 20), 20)
 
-                rule_score = 0
-                reason_parts = []
-
-                # --- Scoring ---
-                category_pts = category_score.get(category, 0)
-                severity_pts = severity_score.get(severity, 10)
-            
-                tag_pts = sum(normalized_tag_score.get(tag, 0) for tag in normalized_tags)
-
-                rule_score += category_pts + severity_pts + tag_pts
-
-                logger.debug(f"[YARA:{rule_id}] Score breakdown: category={category_pts}, severity={severity_pts}, tags_total={tag_pts}")
-
-                # --- Confidence Bonus ---
-                try:
-                    if int(confidence) >= 90:
-                        rule_score += 5
-                        reason_parts.append("confidence high (90+)")
-                        logger.debug(f"[YARA:{rule_id}] High confidence bonus applied")
-                except ValueError:
-                    logger.warning(f"[YARA:{rule_id}] Invalid confidence format: {confidence}")
-                    reasons.append(f"[WARN] Invalid confidence: {confidence} in rule {rule_id}")
-
-                # --- Optional metadata context ---
-                if impact:
-                    reason_parts.append(f"impact: {impact}")
-                if family:
-                    reason_parts.append(f"family: {family}")
-
-                # --- Unmatched Tags ---       
-                unmatched_tags = [tag for tag in normalized_tags if tag not in normalized_tag_score]
-                if unmatched_tags:
-                    logger.debug(f"[YARA:{rule_id}] Unscored tags: {unmatched_tags}")
-                    reasons.append(f"[INFO] Unscored tags in {rule_id}: {', '.join(unmatched_tags)}")
-
-                # --- Compose Reason ---
-                reason_summary = (
-                    f"[YARA][{severity.upper()}][{category}] {rule_id}: {desc} "
-                    f"(score: {rule_score})"
-                )
-                if reason_parts:
-                    reason_summary += f" [{' | '.join(reason_parts)}]"
-
-                reasons.append(reason_summary)
-                total_score += rule_score
-
-                logger.debug(f"[YARA:{rule_id}] Final rule score: {rule_score}")
-
-            except Exception as ex:
-                logger.exception(f"[YARA] Failed processing validated hit #{index}: {ex}")
-                reasons.append(f"[ERROR] Failed to evaluate YARA hit #{index}: {ex}")
-
-        logger.info(f"[YARA] Evaluation complete: total_score={total_score}, hits={len(validated_hits)}")
-        return total_score, reasons
+        logger.info(f"[YARA] Final raw_score={total_score}, severity_sum={severity_sum}, normalized={normalized_score}")
+        return normalized_score, reasons

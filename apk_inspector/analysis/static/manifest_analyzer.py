@@ -7,8 +7,31 @@ logger = get_logger()
 
 ANDROID_NS = "http://schemas.android.com/apk/res/android"
 
-# Dangerous permissions (can be extended later)
-DANGEROUS_KEYWORDS = {"SMS", "CONTACT", "LOCATION", "CAMERA", "MICROPHONE", "CALL", "PHONE", "RECORD_AUDIO"}
+# Dangerous permissions 
+ANDROID_DANGEROUS_PERMISSIONS = {
+    "android.permission.READ_CALENDAR",
+    "android.permission.WRITE_CALENDAR",
+    "android.permission.CAMERA",
+    "android.permission.READ_CONTACTS",
+    "android.permission.WRITE_CONTACTS",
+    "android.permission.GET_ACCOUNTS",
+    "android.permission.ACCESS_FINE_LOCATION",
+    "android.permission.ACCESS_COARSE_LOCATION",
+    "android.permission.RECORD_AUDIO",
+    "android.permission.READ_PHONE_STATE",
+    "android.permission.CALL_PHONE",
+    "android.permission.READ_CALL_LOG",
+    "android.permission.WRITE_CALL_LOG",
+    "android.permission.ADD_VOICEMAIL",
+    "android.permission.USE_SIP",
+    "android.permission.PROCESS_OUTGOING_CALLS",
+    "android.permission.BODY_SENSORS",
+    "android.permission.SEND_SMS",
+    "android.permission.RECEIVE_SMS",
+    "android.permission.READ_SMS",
+    "android.permission.RECEIVE_WAP_PUSH",
+    "android.permission.RECEIVE_MMS"
+}
 
 def get_android_attrib(elem: ET.Element, name: str) -> str:
     return elem.attrib.get(f"{{{ANDROID_NS}}}{name}", "")
@@ -21,7 +44,7 @@ def extract_permissions(root: ET.Element) -> List[str]:
     ]
 
 def identify_dangerous_permissions(permissions: List[str]) -> List[str]:
-    return [p for p in permissions if any(keyword in p.upper() for keyword in DANGEROUS_KEYWORDS)]
+    return [p for p in permissions if any(keyword in p.upper() for keyword in ANDROID_DANGEROUS_PERMISSIONS )]
 
 def extract_components(root: ET.Element) -> Dict[str, List[Dict]]:
     tag_map = {

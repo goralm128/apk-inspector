@@ -151,9 +151,8 @@ class RuleEngine:
             return None
 
 
-    def _evaluate_dynamic(self, events: List[Dict]) -> Tuple[int, int, List[str], int, bool, List[TriggeredRuleResult], Dict[str, int]]:
-        dynamic_score = 0
-        rule_bonus_score = 0
+    def _evaluate_dynamic(self, events: List[Dict]) -> Tuple[int, int, List[str], int, bool, 
+                                                             List[TriggeredRuleResult], Dict[str, int]]:
         reasons = []
         rule_results = []
         high_risk = 0
@@ -163,6 +162,9 @@ class RuleEngine:
         combo_applied = False
         scoring_justification = defaultdict(int)
 
+        raw_dynamic = 0
+        raw_rule_bonus = 0
+  
         for idx, evt in enumerate(events):
             triggered = self._apply_rules_to_event(evt)
             if not triggered:
@@ -170,45 +172,66 @@ class RuleEngine:
                 continue
 
             bonus, rules = triggered
-            rule_bonus_score += bonus
+            raw_rule_bonus += bonus
+
+            # Track severity levels for later decision
+            severities = [r.severity.lower() for r in rules]
+            medium_severity_count = 0
 
             for r in rules:
-                if r.severity.lower() not in ("high", "critical"):
-                    continue  # skip lower severities for scaled dynamic score
-
-                event_count[r.rule_id] += 1
+                rule_id = r.rule_id
+                event_count[rule_id] += 1
                 seen_categories.add(r.category)
 
-                sev_factor = self.SEVERITY_SCORE.get(r.severity.lower(), 1)
-                scaled = int(r.weight * sev_factor * log2(event_count[r.rule_id] + 1))
-                scaled = min(scaled, 15)  # cap to prevent runaway score
-                dynamic_score += scaled
+                sev = r.severity.lower()
+                sev_factor = self.SEVERITY_SCORE.get(sev, 1)
+                freq = max(event_count[rule_id], 2)  # log2(2) = 1 minimum score factor
+                scaled = int(r.weight * sev_factor * log2(freq))
+                scaled = min(scaled, 15)
 
-                scoring_justification[r.rule_id] += scaled
+                if sev in ("high", "critical"):
+                    raw_dynamic += scaled
+                    scoring_justification[rule_id] += scaled
+                elif sev == "medium":
+                    medium_severity_count += 1
 
-                if r.description not in reasons:
+                # Collect unique descriptions
+                if r.description and r.description not in reasons:
                     reasons.append(r.description)
 
-            severities = [r.severity for r in rules]
-            if any(s in ("high", "critical") for s in severities):
+            # Risk classification
+            if any(sev in ("high", "critical") for sev in severities):
                 evt["metadata"]["risk_level"] = "high"
                 high_risk += 1
             else:
                 lvl = max(severities, key=lambda s: self.SEVERITY_SCORE.get(s, 0), default="low")
                 evt["metadata"]["risk_level"] = lvl
 
+            # Heuristic combo boost
             if not combo_applied and {"reflection", "dex_load", "http"}.issubset(set(evt.get("tags", []))):
-                dynamic_score += 15
+                raw_dynamic += 15
                 reasons.append("[COMBO] Reflection + Dex + Network")
                 combo_applied = True
 
+            # Behavioral bonus for medium severity
+            if medium_severity_count >= 2:
+                raw_dynamic += 5
+                reasons.append("[BEHAVIOR] Medium-severity behavior present")
+
             rule_results.extend(rules)
 
+        # Bonus for category diversity
         if len(seen_categories) >= 3:
-            dynamic_score += 10
+            raw_dynamic += 10
             reasons.append(f"[BEHAVIOR] Diverse categories: {', '.join(seen_categories)}")
+            
 
-        return dynamic_score, rule_bonus_score, reasons, high_risk, net_flag, rule_results, dict(scoring_justification)
+        # Normalize dynamic score and rule bonus
+        dyn_scaled = int(min(raw_dynamic, 100) * 0.5)  # normalize to 0–50
+        dyn_bonus = min(raw_rule_bonus, 20) # Max 20
+
+        return dyn_scaled, dyn_bonus, reasons, high_risk, net_flag, rule_results, scoring_justification
+
 
     def _evaluate_static(self, static_info: Dict[str, Any]) -> Tuple[int, List[str]]:
         try:
@@ -313,18 +336,12 @@ class RuleEngine:
 
         logger.info(f"[RuleEngine] Evaluation started: {len(events)} events")
 
-        raw_static_score, static_reasons = self._evaluate_static(static_info) if static_info else (0, [])
-        raw_dynamic_scaled, raw_dynamic_rule_bonus, dynamic_reasons, high_risk, net_flag, rule_results, scoring_justification = self._evaluate_dynamic(events)
+        static_score, static_reasons = self._evaluate_static(static_info) if static_info else (0, [])
+        dynamic_scaled_score, dynamic_rule_bonus, dynamic_reasons, high_risk, net_flag, rule_results, scoring_justification = self._evaluate_dynamic(events)
         hook_score, hook_reasons = self._evaluate_hook_coverage(hook_coverage) if hook_coverage else (0, [])
-        raw_yara_score, yara_reasons = self._evaluate_yara(yara_hits) if yara_hits else (0, [])
-        
-         # --- Normalize to target weights ---
-        static_score = min(raw_static_score, 10)
-        dynamic_scaled_score = min(raw_dynamic_scaled, 50)
-        dynamic_rule_bonus = min(raw_dynamic_rule_bonus, 20)
-        yara_score = min(raw_yara_score, 20)
+        yara_score, yara_reasons = self._evaluate_yara(yara_hits) if yara_hits else (0, [])
 
-
+        logger.info(f"[RuleEngine] Static score: {static_score}, Dynamic score: {dynamic_scaled_score}, YARA score: {yara_score}, Hook score: {hook_score}")
         total_score = static_score + dynamic_scaled_score + dynamic_rule_bonus + yara_score
         capped_total_score = min(total_score, 100)
 

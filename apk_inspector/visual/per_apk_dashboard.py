@@ -9,7 +9,7 @@ def generate_per_apk_dashboard(summary: ApkSummary, apk_dir: Path, report_json: 
     output_path = apk_dir / f"{pkg}_dashboard.html"
     charts = [
         ("yara_tag_pie.png", "Tag Distribution"),
-        ("stacked_family.png", "Malware Family vs Category"),
+        #("stacked_family.png", "Malware Family vs Category"),
         ("stacked_severity.png", "Severity vs Category"),
         ("risk_breakdown.png", "Risk Breakdown")
     ]
