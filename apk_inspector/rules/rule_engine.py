@@ -140,7 +140,7 @@ class RuleEngine:
                     triggered.append(result)
                     logger.info(f"[RuleEngine] ✅ Rule {rule.id} triggered on event {event_id} → bonus: {bonus}")
                 else:
-                    logger.info(f"[RuleEngine] ❌ Rule {rule.id} did not match event {event_id}")
+                    logger.debug(f"[RuleEngine] ❌ Rule {rule.id} did not match event {event_id}")
             except Exception as ex:
                 logger.warning(f"[RuleEngine] ⚠ Rule {rule.id} raised exception on event {event_id}: {ex}")
 
@@ -192,8 +192,21 @@ class RuleEngine:
                 freq = max(event_count[rule_id], 2)  # log2(2) = 1 minimum score factor
                 scaled = int(r.weight * sev_factor * log2(freq))
                 scaled = min(scaled, 15)
-                raw_dynamic += scaled
-                scoring_justification[rule_id] += scaled
+                #raw_dynamic += scaled
+                #scoring_justification[rule_id] += scaled
+                
+                # Accumulate dynamic score from all severities, scaled differently
+                if sev in ("critical", "high"):
+                    raw_dynamic += scaled
+                    scoring_justification[rule_id] += scaled
+                elif sev == "medium":
+                    bonus_score = int(scaled * 0.5)
+                    raw_dynamic += bonus_score
+                    scoring_justification[rule_id] += bonus_score
+                elif sev == "low":
+                    bonus_score = int(scaled * 0.25)
+                    raw_dynamic += bonus_score
+                    scoring_justification[rule_id] += bonus_score
             
                 # Collect unique descriptions
                 if r.description not in reasons:
