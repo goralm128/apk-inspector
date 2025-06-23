@@ -5,20 +5,28 @@
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Status](https://img.shields.io/badge/alpha-early--access-orange)
 
-**APK Inspector** is a Python-based toolkit for dynamic and static analysis of Android APKs. It uses [Frida](https://frida.re/) to trace real-time behavior, classifies suspicious activity, scans for malware indicators using YARA, and automatically generates structured JSON verdicts — making it ideal for reverse engineers, SOC analysts, and mobile security researchers.
+**APK Inspector** is a powerful Python-based toolkit for static and dynamic analysis of Android APKs. Built for malware analysts, SOC teams, and reverse engineers, it combines Frida-based runtime instrumentation with static YARA rule scanning to identify suspicious behaviors and generate actionable reports.
 
 ---
 
 ## Features
 
-- Install and launch multiple APKs automatically via `adb`
-- Trace runtime behavior with Frida:
-  - File access (e.g., `read`, `write`, `fopen`)
-  - Network traffic (e.g., `send`, `recv`, `connect`, TLS hooks)
-- Automatically classify accessed data (e.g., `sensitive`, `auth`, `config`)
-- Assign a suspicion score and generate a verdict (`benign`, `suspicious`, or `malicious`)
-- Decompile APKs and scan them using custom YARA rules
-- Output structured per-app and aggregated JSON reports
+- **Dynamic analysis** with Frida:
+  - Monitor file system and network activity
+  - Hook runtime functions (e.g., `open`, `send`, `dlopen`, `System.loadLibrary`)
+- **Static analysis** of decompiled APKs:
+  - Extract manifest permissions, components, and exported services
+  - Detect dangerous permissions and misconfigurations
+- **YARA-based scanning** of:
+  - Decompiled smali code
+  - Embedded strings and assets
+  - APK structure and behaviors
+- **Scoring engine**:
+  - Assigns a risk score and verdict (`benign`, `suspicious`, `malicious`)
+  - Supports customizable rule weights and CVSS-style banding
+- **Automated reporting**:
+  - JSON, CSV, and HTML dashboards
+  - Includes per-APK and global analysis summaries
 
 ---
 
@@ -30,15 +38,15 @@
 - A rooted Android device or emulator with:
   - USB debugging enabled (Settings > Developer Options)
   - Frida server running on the device
-- `adb` installed and in your system `PATH`
-- `frida-tools` installed:
+- Tools:
+  - `adb`, `frida-tools`, `aapt`, `apktool`
+  - `yara-python` for static scanning
+
+### Install Required Tools
 
 ```bash
-pip install frida-tools
-```
-
-- aapt in your PATH for faster APK analysis
-- Manually install ApkTool: https://ibotpeaches.github.io/Apktool/
+pip install -r requirements.txt
+pip install frida-tools yara-python
 
 ### 2. Prepare the Device
 
