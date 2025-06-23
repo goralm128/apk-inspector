@@ -72,18 +72,14 @@ def generate_per_apk_dashboard(summary: ApkSummary, apk_dir: Path, report_json: 
 
 def generate_index_page(summaries: List[ApkSummary], run_dir: Path, filename: str = "index.html") -> Path:
     index_path = run_dir / filename
-    rows = ""
-
-    for summary in summaries:
-        pkg = summary.apk_package
-        link = f"{pkg}/{pkg}_dashboard.html"
-        rows += f"""
-        <tr>
-            <td><a href="{link}">{pkg}</a></td>
+    rows = "\n".join([
+        f"""<tr>
+            <td><a href="{summary.apk_package}/{summary.apk_package}_dashboard.html">{summary.apk_package}</a></td>
             <td>{summary.classification}</td>
-            <td>{summary.risk_score}</td>
+            <td style="text-align:center;">{summary.risk_score}</td>
             <td>{summary.cvss_risk_band}</td>
-        </tr>"""
+        </tr>""" for summary in summaries
+    ])
 
     html = f"""<!DOCTYPE html>
 <html>
@@ -94,8 +90,9 @@ def generate_index_page(summaries: List[ApkSummary], run_dir: Path, filename: st
         body {{ font-family: sans-serif; margin: 40px; }}
         h1 {{ color: #2a9d8f; }}
         table {{ width: 100%; border-collapse: collapse; margin-top: 20px; }}
-        th, td {{ padding: 10px; border-bottom: 1px solid #ccc; }}
+        th, td {{ padding: 12px; border-bottom: 1px solid #ccc; text-align: left; }}
         th {{ background-color: #f4f4f4; }}
+        td:nth-child(3) {{ text-align: center; }}
         a {{ color: #264653; text-decoration: none; }}
         a:hover {{ text-decoration: underline; }}
     </style>
@@ -105,10 +102,10 @@ def generate_index_page(summaries: List[ApkSummary], run_dir: Path, filename: st
     <table>
         <thead>
             <tr>
-                <th>Package</th>
-                <th>Classification</th>
-                <th>Risk Score</th>
-                <th>CVSS Band</th>
+                <th style="width: 40%;">Package</th>
+                <th style="width: 20%;">Classification</th>
+                <th style="width: 20%;">Risk Score</th>
+                <th style="width: 20%;">CVSS Band</th>
             </tr>
         </thead>
         <tbody>
