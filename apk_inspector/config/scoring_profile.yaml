@@ -1,5 +1,8 @@
 ---
 category_score:
+  # Static Detection Categories
+  anubis_static: 30        # High-confidence Anubis-specific detection
+
   # Dynamic Behavior Categories
   crypto_usage: 10
   reflection: 10
@@ -17,8 +20,17 @@ category_score:
   privilege_escalation: 15
   c2: 25
   evasion: 20
+
 tag_score:
-   # UI/Permission Abuse
+  # Anubis-specific Indicators
+  anubis: 25             #  Tag assigned from anubis_rules.yar hits
+  turkish_strings: 10    #  Turkish lure strings like "şifre", "müsteri"
+  gate_php: 20           #  Static C2 path signature
+  native_exec: 15        #  Tags for execve/system in static .smali
+  playprotect_bypass: 15 #  Tag for PlayProtect spoofing logic
+  dex_reflection: 15     #  Indicates runtime dex loading
+
+  # UI/Permission Abuse
   overlay: 10
   accessibility: 10
   clickjacking: 10
@@ -85,10 +97,12 @@ tag_score:
   evasion: 10
   xor: 10
   keylogger: 20
+
 severity_score:
   low: 5
   medium: 10
   high: 20
+
 path_type_score:
   sensitive: 20
   system_access: 15
