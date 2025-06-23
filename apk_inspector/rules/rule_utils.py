@@ -2,6 +2,7 @@ import ast
 import jsonschema
 import yaml
 from pathlib import Path
+from collections import defaultdict
 from apk_inspector.utils.logger import get_logger
 
 logger = get_logger()
@@ -67,11 +68,21 @@ def validate_rules_yaml(yaml_path: Path) -> None:
     except yaml.YAMLError as ye:
         logger.error(f"[ERROR] Malformed YAML in {yaml_path.name}: {ye}")
         raise
+    
+def recursive_defaultdict(data):
+    """
+    Recursively wraps nested dictionaries in defaultdict(lambda: None).
+    Ensures all dictionary accesses return safe defaults instead of raising KeyError or TypeError.
+    """
+    if isinstance(data, dict):
+        return defaultdict(lambda: None, {k: recursive_defaultdict(v) for k, v in data.items()})
+    elif isinstance(data, list):
+        return [recursive_defaultdict(i) for i in data]
+    return data
 
 def safe_lambda(condition: str):
     """
-    Securely compiles and returns a lambda that evaluates 'condition' on an event dict.
-    It parses the expression first, and wraps eval() with builtin safety and exception capture.
+    Compiles a rule condition into a safe, evaluatable lambda function that gracefully handles missing keys or None values.
     """
     try:
         ast.parse(condition, mode="eval")
@@ -81,7 +92,10 @@ def safe_lambda(condition: str):
 
     def func(event):
         try:
-            return bool(eval(condition, {"__builtins__": None, **SAFE_BUILTINS}, {"event": event}))
+            if not isinstance(event, dict):
+                return False
+            safe_event = recursive_defaultdict(event or {})
+            return bool(eval(condition, {"__builtins__": None, **SAFE_BUILTINS}, {"event": safe_event}))
         except Exception as ex:
             logger.warning(f"[safe_lambda] Error evaluating rule condition: {ex} – {condition}")
             return False

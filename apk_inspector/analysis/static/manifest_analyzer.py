@@ -44,7 +44,11 @@ def extract_permissions(root: ET.Element) -> List[str]:
     ]
 
 def identify_dangerous_permissions(permissions: List[str]) -> List[str]:
-    return [p for p in permissions if any(keyword in p.upper() for keyword in ANDROID_DANGEROUS_PERMISSIONS )]
+    """
+    Return only those permissions which exactly match a known
+    dangerous Android permission.
+    """
+    return [p for p in permissions if p in ANDROID_DANGEROUS_PERMISSIONS]
 
 def extract_components(root: ET.Element) -> Dict[str, List[Dict]]:
     tag_map = {

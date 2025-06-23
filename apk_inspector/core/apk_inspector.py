@@ -153,7 +153,7 @@ class APKInspector:
 
     def _perform_static_analysis(self, package_name: str) -> Dict[str, Any]:
         decompiled_dir = self.workspace.get_decompile_path(package_name)
-        self.logger.info(f"[{package_name}] Running static analysis...")
+        self.logger.debug(f"[{package_name}] Running static analysis...")
         static_result = self.static_analyzer.analyze(self.apk_path, decompiled_dir)
         return static_result.to_dict()
 
