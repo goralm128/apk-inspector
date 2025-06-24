@@ -1,6 +1,6 @@
 
 from typing import List, Dict, Any, Set
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, field_validator
 
 
 class YaraMatchModel(BaseModel):

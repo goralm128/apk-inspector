@@ -4,14 +4,14 @@ token:
   - "access_token"
 
 key:
-  - "private[_\\-]?key"
-  - "api[_\\-]?key"
-  - "secret[_\\-]?key"
+  - "\\bprivate[_\\-]?key\\b"
+  - "\\bapi[_\\-]?key\\b"
+  - "\\bsecret[_\\-]?key\\b"
 
 secret:
-  - "secret"
-  - "secret_key"
-  - "top_secret"
+  - "\\bsecret\\b"
+  - "\\bsecret_key\\b"
+  - "\\btop_secret\\b"
 
 filesystem:
   - "\\bfile\\b"
@@ -22,27 +22,27 @@ filesystem:
   - "write\\("
 
 sensitive:
-  - "password"
-  - "credential"
-  - "secret"
-  - "user[_\\-]?info"
-  - "auth"
+  - "\\bpassword\\b"
+  - "\\bcredential\\b"
+  - "\\buser[_\\-]?info\\b"
+  - "\\bauth\\b"
 
 network:
   - "http[s]?://"
-  - "socket"
-  - "connect"
+  - "\\bsocket\\b"
+  - "\\bconnect\\b"
   - "\\bip\\b"
-  - "GET "
-  - "POST "
+  - "\\bGET\\s"
+  - "\\bPOST\\s"
 
 external:
-  - "\\b(8\\.8\\.8\\.8|1\\.1\\.1\\.1)\\b"
+  - "\\b8\\.8\\.8\\.8\\b"
+  - "\\b1\\.1\\.1\\.1\\b"
   - "external_url"
   - "\\bpublic\\b"
 
 blacklisted_ip:
-  - "\\b(45\\.|185\\.|103\\.)\\b"
+  - "\\b(?:45\\.|185\\.|103\\.)"
   - "malicious\\.net"
   - "evil\\.org"
 
@@ -50,7 +50,7 @@ ip_address:
   - "\\b(?:[0-9]{1,3}\\.){3}[0-9]{1,3}\\b"
 
 dns:
-  - "resolve"
+  - "\\bresolve\\b"
   - "gethostby"
   - "dns_query"
 
@@ -60,18 +60,18 @@ http:
 reflection:
   - "Class\\.forName"
   - "Method\\.invoke"
-  - "reflect"
+  - "\\breflect"
 
 dex_load:
-  - "dexclassloader"
+  - "\\bdexclassloader\\b"
   - "dex_load"
   - "dlopen"
-  - "loadlibrary"
+  - "loadLibrary"
 
 native:
-  - "native"
-  - "libc"
-  - "jni"
+  - "\\bnative\\b"
+  - "\\blibc\\b"
+  - "\\bjni\\b"
   - "execve"
   - "fork"
 
@@ -88,18 +88,18 @@ code_injection:
 
 evasion:
   - "bypass"
-  - "root_check"
-  - "hide"
-  - "emulator"
+  - "root[_\\-]?check"
+  - "\\bhide\\b"
+  - "\\bemulator\\b"
   - "instrumentation"
 
 frida:
-  - "frida"
+  - "\\bfrida\\b"
   - "gum\\."
   - "Interceptor\\.attach"
 
 hooking:
-  - "hook_"
+  - "\\bhook_"
   - "intercept"
   - "override"
 
@@ -143,15 +143,15 @@ crypto:
   - "cipher"
   - "encrypt"
   - "decrypt"
-  - "RSA"
-  - "AES"
+  - "\\bRSA\\b"
+  - "\\bAES\\b"
 
 weak_crypto:
-  - "ECB"
-  - "DES"
-  - "MD5"
-  - "Base64"
-  - "short_key"
+  - "\\bECB\\b"
+  - "\\bDES\\b"
+  - "\\bMD5\\b"
+  - "\\bBase64\\b"
+  - "short[_\\-]?key"
 
 base64:
   - "base64"
@@ -159,11 +159,11 @@ base64:
   - "decode"
 
 entropy:
-  - "[a-zA-Z0-9+/]{32,}=="
+  - "[A-Za-z0-9+/]{32,}=="
   - "[A-Za-z0-9+/]{40,}"
 
 unencrypted:
-  - "unencrypted"
+  - "\\bunencrypted\\b"
   - "plaintext"
   - "no_ssl"
   - "http://"
@@ -171,8 +171,8 @@ unencrypted:
 privilege:
   - "system_access"
   - "chmod"
-  - "su"
-  - "root"
+  - "\\bsu\\b"
+  - "\\broot\\b"
 
 system:
   - "/system/"
@@ -196,7 +196,7 @@ automation:
 obfuscation:
   - "junk_code"
   - "obfuscate"
-  - "packers"
+  - "packer"
 
 xor:
   - "xor\\s*\\("
@@ -209,9 +209,7 @@ keylogger:
 
 tls:
   - "\\bSSLv3\\b"
-  - "\\bTLSv1\\b"
-  - "\\bTLSv1.2\\b"
-  - "\\bTLSv1.3\\b"
+  - "\\bTLSv1(\\.2|\\.3)?\\b"
   - "ssl_socket"
   - "tls_handshake"
 
@@ -230,15 +228,15 @@ encrypted:
   - "crypto_context"
 
 logging:
-  - "log\\.(d|i|e|w)"
+  - "log\\.(?:d|i|e|w)"
   - "print\\("
   - "System\\.out\\.println"
 
 tracking:
-  - "gps"
+  - "\\bgps\\b"
   - "location_manager"
   - "cell_tower"
-  - "geo"
+  - "\\bgeo\\b"
 
 adb:
   - "\\badb\\b"
@@ -246,6 +244,6 @@ adb:
   - "adb_shell"
 
 zip:
-  - "\\.zip"
+  - "\\.zip\\b"
   - "ZipInputStream"
   - "ZipOutputStream"

@@ -9,12 +9,14 @@ rule Suspicious_Reflection_Usage : reflection obfuscation dynamic_behavior
         created = "2025-05-25"
 
     strings:
-        $ref1 = "Class.forName"
-        $ref2 = "getMethod"
-        $ref3 = "setAccessible"
+        $ref1 = "Class.forName" ascii nocase
+        $ref2 = "getMethod" ascii nocase
+        $ref3 = "getDeclaredMethod" ascii nocase
+        $ref4 = "setAccessible" ascii nocase
+        $ref5 = "invoke" ascii nocase
 
     condition:
-        all of ($ref1, $ref2, $ref3)
+        3 of them
 }
 
 rule Obfuscated_Class_Name_Entropy : obfuscation entropy class_name string_obfuscation
@@ -28,8 +30,9 @@ rule Obfuscated_Class_Name_Entropy : obfuscation entropy class_name string_obfus
         created = "2025-05-25"
 
     strings:
-        $cls1 = /L[a-z]{1,2}\/[a-z]{1,2}\/[a-z]{1,2};/
-        $cls2 = "a.a.a"
+        $cls1 = /L[a-z]{1,2}\/[a-z]{1,2}\/[a-z]{1,2};/ ascii
+        $cls2 = "a.a.a" ascii
+        $cls3 = "b.b.b" ascii
 
     condition:
         any of them
@@ -46,12 +49,12 @@ rule XOR_Obfuscation_Pattern : obfuscation crypto_usage xor_pattern
         created = "2025-05-25"
 
     strings:
-        $xor_a = " ^ "
-        $xor_b = "char c = (char)(b ^ k);"
-        $xor_c = "deobfuscate(byte[] data, byte key)"
+        $xor1 = " ^ " ascii
+        $xor2 = "char c = (char)(b ^ k);" ascii
+        $xor3 = "deobfuscate(byte[] data, byte key)" ascii
+        $xor4 = "data[i] ^ key" ascii
+        $xor5 = "k = key[i % key.length]" ascii
 
     condition:
-        2 of ($xor_a, $xor_b, $xor_c)
+        2 of them
 }
-
-

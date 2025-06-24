@@ -1,5 +1,5 @@
 from typing import Tuple, List, Dict, Any
-from apk_inspector.reports.schemas import YaraMatchModel
+from apk_inspector.reports.yara_match_model import YaraMatchModel
 from pydantic import ValidationError
 from apk_inspector.utils.logger import get_logger
 

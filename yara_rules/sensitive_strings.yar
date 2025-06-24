@@ -9,7 +9,7 @@ rule Suspicious_Token_String : token api auth sensitive
         created     = "2025-05-25"
 
     strings:
-        $token = /Bearer\s+[A-Za-z0-9._~+\/=-]+/
+        $token = /Bearer\s+[A-Za-z0-9._~+\/=-]{10,200}/ ascii nocase
 
     condition:
         $token
@@ -26,10 +26,11 @@ rule Hardcoded_JWT_Like_String : jwt token sensitive_string
         created     = "2025-05-25"
 
     strings:
-        $jwt = /[A-Za-z0-9-_]{10,}\.[A-Za-z0-9-_]{10,}\.[A-Za-z0-9-_]{10,}/
+        $jwt1 = /[A-Za-z0-9-_]{10,}\.[A-Za-z0-9-_]{10,}\.[A-Za-z0-9-_]{10,}/ ascii
+        $jwt2 = /eyJ[a-zA-Z0-9=._-]{20,}\.[a-zA-Z0-9=._-]{20,}\.[a-zA-Z0-9=._-]{20,}/ ascii
 
     condition:
-        $jwt
+        any of them
 }
 
 rule Suspicious_Encryption_Keys : sensitive_string crypto key iv
@@ -43,13 +44,13 @@ rule Suspicious_Encryption_Keys : sensitive_string crypto key iv
         created     = "2025-05-25"
 
     strings:
-        $key1 = "key = \"" nocase
-        $key2 = "aes = \"" nocase
-        $key3 = "secret = \"" nocase
-        $iv1  = "iv = \"" nocase
-        $iv2  = "nonce = \"" nocase
+        $key1 = /key\s*=\s*["']/ nocase ascii
+        $key2 = /aes\s*=\s*["']/ nocase ascii
+        $key3 = /secret\s*=\s*["']/ nocase ascii
+        $key4 = /encryption[_-]?key\s*[:=]\s*["']/ nocase ascii
+        $iv1  = /iv\s*=\s*["']/ nocase ascii
+        $iv2  = /nonce\s*=\s*["']/ nocase ascii
 
     condition:
-        any of ($key*, $iv*)
+        any of them
 }
-

@@ -9,12 +9,14 @@ rule Generic_Crypto_API_Usage : crypto crypto_usage
         created = "2025-05-25"
 
     strings:
-        $cipher = "javax.crypto.Cipher"
-        $keygen = "KeyGenerator"
-        $keyspec = "SecretKeySpec"
+        $cipher   = "javax.crypto.Cipher" ascii nocase
+        $keygen   = "KeyGenerator" ascii nocase
+        $keyspec  = "SecretKeySpec" ascii nocase
+        $mac      = "javax.crypto.Mac" ascii nocase
+        $ivspec   = "IvParameterSpec" ascii nocase
 
     condition:
-        any of ($cipher, $keygen, $keyspec)
+        any of them
 }
 
 rule Weak_Crypto_Primitives_Usage : crypto crypto_usage weak_crypto
@@ -28,13 +30,16 @@ rule Weak_Crypto_Primitives_Usage : crypto crypto_usage weak_crypto
         created = "2025-05-25"
 
     strings:
-        $aes_ecb = "AES/ECB/PKCS5Padding"
-        $des_alg = "DES"
-        $hardcoded = "aes_key"
-        $xor_key = "xor_key"
+        $aes_ecb1 = "AES/ECB/PKCS5Padding" ascii
+        $aes_ecb2 = "AES/ECB/NoPadding" ascii
+        $des      = "DES" ascii
+        $rc4      = "RC4" ascii
+        $md5      = "MD5" ascii
+        $hardcoded1 = "aes_key" ascii
+        $xor_key  = "xor_key" ascii
 
     condition:
-        any of ($aes_ecb, $des_alg, $hardcoded, $xor_key)
+        any of them
 }
 
 rule Base64_Misuse_Indicator : crypto crypto_usage encoding obfuscation
@@ -48,12 +53,13 @@ rule Base64_Misuse_Indicator : crypto crypto_usage encoding obfuscation
         created = "2025-05-25"
 
     strings:
-        $encoder = "Base64.encode"
-        $decoder = "Base64.decode"
-        $variant = "android.util.Base64"
+        $encode  = "Base64.encode" ascii nocase
+        $decode  = "Base64.decode" ascii nocase
+        $variant = "android.util.Base64" ascii nocase
+        $altlib  = "org.apache.commons.codec.binary.Base64" ascii nocase
 
     condition:
-        any of ($encoder, $decoder, $variant)
+        any of them
 }
 
 rule Short_Key_Usage : crypto crypto_usage weak_crypto
@@ -65,14 +71,12 @@ rule Short_Key_Usage : crypto crypto_usage weak_crypto
         confidence = 85
         author = "apk-inspector"
         created = "2025-05-25"
-      
+
     strings:
-        $key8 = "12345678"
-        $key16 = "1234567890abcdef"
-        $key64 = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefgh"
+        $key8  = "12345678" ascii
+        $key16 = "1234567890abcdef" ascii
+        $key64 = "abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyzabcdefgh" ascii
 
     condition:
-        any of ($key8, $key16, $key64)
+        any of them
 }
-
-

@@ -1,55 +1,63 @@
-rule Overlay_Abuse : overlay ui_hijack phishing system_alert
+rule Auto_Clicker_Behavior : autoclick automation accessibility abuse
 {
     meta:
-        description = "Abuse of SYSTEM_ALERT_WINDOW or runtime overlay behavior"
-        category = "overlay_abuse"
-        severity = "high"
-        confidence = 90
-        author = "apk-inspector"
-        created = "2025-05-25"
+        description = "Auto-clicker behavior using Accessibility APIs or UI automation"
+        category    = "accessibility_abuse"
+        severity    = "high"
+        confidence  = 80
+        author      = "apk-inspector"
+        created     = "2025-05-26"
 
     strings:
-        $perm = "android.permission.SYSTEM_ALERT_WINDOW"
-        $type_overlay = "TYPE_APPLICATION_OVERLAY"
-        $type_alert = "TYPE_SYSTEM_ALERT"
-        $layout = "WindowManager.LayoutParams"
-        $view = "addView"
+        $perform_action = "performAction" ascii nocase
+        $loop_click     = "while (true)" ascii
+        $thread_sleep   = "Thread.sleep" ascii
+        $global_action  = "performGlobalAction" ascii nocase
+        $click_text     = "click()" ascii
 
     condition:
-        any of them
+        2 of them
 }
 
-rule Accessibility_Service_Abuse : accessibility abuse automation clickjacking
+rule Fake_UI_Overlay : overlay phishing impersonation
 {
     meta:
-        description = "Detects abuse of Accessibility Service APIs often used in clickjacking or automated interaction"
-        category = "accessibility_abuse"
-        severity = "high"
-        confidence = 90
-        author = "apk-inspector"
-        created = "2025-05-25"
+        description = "Impersonated UI overlay or fake system prompt (phishing pattern)"
+        category    = "overlay_abuse"
+        severity    = "high"
+        confidence  = 85
+        author      = "apk-inspector"
+        created     = "2025-05-26"
 
     strings:
-        // Manifest permission
-        $perm = "android.permission.BIND_ACCESSIBILITY_SERVICE"
-        
-        // Class or interface
-        $iface = "android.accessibilityservice.AccessibilityService"
-        $impl  = "AccessibilityService"
-
-        // Events and methods commonly abused
-        $event = "TYPE_VIEW_CLICKED"
-        $action1 = "performGlobalAction"
-        $action2 = "TYPE_VIEW_FOCUSED"
-        $action3 = "TYPE_VIEW_TEXT_CHANGED"
-        $action4 = "TYPE_WINDOW_CONTENT_CHANGED"
+        $view_inflate   = "LayoutInflater.from" ascii
+        $fake_google    = "com.fake.google" ascii nocase
+        $login_string   = "Google Account Login" ascii nocase
+        $prompt_pass    = "Enter your password" ascii nocase
+        $update_fake    = "Critical Update Required" ascii nocase
 
     condition:
-        // Detects at least 2 behavioral indicators + permission or service mention
-        (
-            2 of ($event, $action1, $action2, $action3, $action4)
-        and
-            any of ($perm, $iface, $impl)
-        )
+        2 of them
 }
 
+rule Ransomware_Lock_Screen_Pattern : ransomware lockscreen persistent_overlay
+{
+    meta:
+        description = "Indicators of ransomware-style persistent lock screens"
+        category    = "overlay_abuse"
+        severity    = "critical"
+        confidence  = 95
+        author      = "apk-inspector"
+        created     = "2025-05-26"
+
+    strings:
+        $lock_perm      = "android.permission.DISABLE_KEYGUARD" ascii
+        $flag_show      = "FLAG_SHOW_WHEN_LOCKED" ascii nocase
+        $fullscreen     = "FLAG_FULLSCREEN" ascii nocase
+        $block_input    = "setFlags(WindowManager.LayoutParams" ascii nocase
+        $threat_text    = "Your device has been locked" ascii nocase
+        $payment_text   = "Pay to unlock" ascii nocase
+
+    condition:
+        2 of them
+}

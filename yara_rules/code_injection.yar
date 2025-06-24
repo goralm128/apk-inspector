@@ -9,51 +9,43 @@ rule Dynamic_Dex_Loading : dex dexclassloader dynamic_code code_injection
         created = "2025-05-25"
 
     strings:
-        // Core Java class used for dynamic code loading
-        $class_loader = "dalvik.system.DexClassLoader"
-        
-        // Common method used to invoke loaded classes
-        $invoke_class = "loadClass"
-        
-        // File extension associated with loaded .dex files
-        $dex_extension = ".dex"
-        
-        // Optional: variants seen in malware
-        $alt_loader = "dalvik.system.BaseDexClassLoader"
-        $path_ref = "getDexPath"
+        $class_loader     = "dalvik.system.DexClassLoader" ascii nocase
+        $base_loader      = "dalvik.system.BaseDexClassLoader" ascii nocase
+        $path_loader      = "dalvik.system.PathClassLoader" ascii nocase
+        $load_class       = "loadClass" ascii nocase
+        $dex_ext          = ".dex" ascii nocase
+        $get_dex_path     = "getDexPath" ascii nocase
+        $reflect_invoke   = "java.lang.reflect.Method.invoke" ascii nocase
 
     condition:
-        // Trigger when core loader is present + one other indicator
-        $class_loader and (1 of ($invoke_class, $dex_extension, $alt_loader, $path_ref))
+        // Require core loader and any other behavioral indicator
+        any of ($class_loader, $base_loader, $path_loader) and
+        1 of ($load_class, $dex_ext, $get_dex_path, $reflect_invoke)
 }
 
 rule Suspicious_Native_Invocation : native code_injection jni hooking
 {
     meta:
         description = "Suspicious use of native loading and memory modification APIs indicating potential hooking or injection"
-        category    = "native_injection"
-        severity    = "high"
-        confidence  = 90
-        author      = "apk-inspector"
-        created     = "2025-05-25"
+        category = "native_injection"
+        severity = "high"
+        confidence = 90
+        author = "apk-inspector"
+        created = "2025-05-25"
 
     strings:
-        // Core Java native-loading functions
-        $load_lib1     = "System.loadLibrary"
-        $load_lib2     = "System.load"
-
-        // Known suspicious libraries
-        $libhook       = "libhook.so"
-        $libsubstrate  = "libsubstrate.so"
-
-        // Native libc-level memory manipulation / loader API
-        $dlopen        = "dlopen"
-        $mprotect      = "mprotect"
-        $dlsym         = "dlsym"
+        $load_lib1     = "System.loadLibrary" ascii nocase
+        $load_lib2     = "System.load" ascii nocase
+        $load_lib3     = "java.lang.Runtime.loadLibrary" ascii nocase
+        $hook_lib      = "libhook.so" ascii
+        $substrate_lib = "libsubstrate.so" ascii
+        $dlopen        = "dlopen" ascii
+        $mprotect      = "mprotect" ascii
+        $dlsym         = "dlsym" ascii
 
     condition:
-        // Trigger if at least 2 indicators are present
-        2 of ($load_lib*, $lib*, $dlopen, $mprotect, $dlsym)
+        // Trigger if 2 or more indicators hit (avoids noisy matches)
+        2 of ($load_lib1, $load_lib2, $load_lib3, $hook_lib, $substrate_lib, $dlopen, $mprotect, $dlsym)
 }
 
 rule Native_Library_Usage : jni native binary_integration
@@ -67,11 +59,11 @@ rule Native_Library_Usage : jni native binary_integration
         created = "2025-05-25"
     
     strings:
-        $jni1 = "System.loadLibrary"
-        $jni2 = "libnative-lib.so"
-        $jni3 = "JNI_OnLoad"
+        $jni1     = "System.loadLibrary" ascii nocase
+        $jni2     = "System.load" ascii nocase
+        $jni3     = "JNI_OnLoad" ascii
+        $lib_file = /\.so/ ascii   // generic .so reference
 
     condition:
         any of them
 }
-
