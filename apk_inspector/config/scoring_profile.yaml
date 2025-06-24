@@ -1,112 +1,145 @@
 ---
 category_score:
-  # Static Detection Categories
-  anubis_static: 30        # High-confidence Anubis-specific detection
 
-  # Dynamic Behavior Categories
-  crypto_usage: 10
+  # Behavior categories
+  crypto_usage: 12
   reflection: 10
   dex_loading: 15
-  native_injection: 20
+  native_injection: 18
   overlay_abuse: 15
   accessibility_abuse: 15
+  overlay_phishing: 25
+  otp_interception: 22
+  sms_stealer: 20
+  browser_injection: 18
+  keystore_abuse: 18
+  credential_harvest: 25
   network_exfiltration: 25
+  data_leak: 15
   malicious_behavior: 30
   system_behavior: 15
-  sensitive_string: 10
-  data_leak: 15
+  sensitive_string: 12
   network: 10
-  exfiltration: 20
+  exfiltration: 22
   privilege_escalation: 15
   c2: 25
   evasion: 20
+  ui_abuse: 15
+  spyware: 25
+  banking_fraud: 30
+  cloud_abuse: 22
 
 tag_score:
-  # Anubis-specific Indicators
-  anubis: 25             #  Tag assigned from anubis_rules.yar hits
-  turkish_strings: 10    #  Turkish lure strings like "şifre", "müsteri"
-  gate_php: 20           #  Static C2 path signature
-  native_exec: 15        #  Tags for execve/system in static .smali
-  playprotect_bypass: 15 #  Tag for PlayProtect spoofing logic
-  dex_reflection: 15     #  Indicates runtime dex loading
+  # Malware-specific
+  banker: 20
+  dropper: 15
+  stealer: 18
 
-  # UI/Permission Abuse
-  overlay: 10
-  accessibility: 10
-  clickjacking: 10
-  system_alert: 10
-  phishing: 15
-  ui_hijack: 15
+  # Network and exfiltration
+  c2: 20
+  dropzone: 10
+  upload: 10
+  exfiltration: 20
+  http: 10
+  dns: 10
+  ip_address: 10
+  blacklisted_ip: 15
+  network: 8
+  external: 4
+  mitm: 15
+  ssl_unpinned: 15
+
+  # Crypto / TLS
   tls: 10
   openssl: 10
   encrypted: 10
   unencrypted: 10
+  crypto: 10
+  base64: 4
+  entropy: 8
+  weak_crypto: 20
+  short_key: 12
+  ecb: 20
+  iv: 10
 
-  # Code & Runtime Behavior
+  # Runtime behavior
   dex: 10
   dex_load: 12
-  code_injection: 15
+  code_injection: 20
   jni: 10
   hooking: 15
   libc: 10
   native: 10
   frida: 15
   reflection: 10
-  automation: 15
+  automation: 12
   obfuscation: 10
-  entropy: 10
-  weak_crypto: 15
-  crypto_usage: 10
+  xor: 10
+  debug_build: 8
 
-  # Privilege Abuse
+  # UI and abuse
+  overlay: 10
+  accessibility: 10
+  clickjacking: 10
+  phishing: 15
+  ui_hijack: 15
+  system_alert: 8
+  webview_abuse: 10
+
+  # Credential and auth
   su: 15
   root: 15
   privilege: 10
-
-  # Network / Exfil
-  c2: 20
-  http: 10
-  dns: 10
-  dropzone: 10
-  upload: 10
-  exfiltration: 20
-  ip_address: 10
-  blacklisted_ip: 10
-  network: 8
-  external: 6
-
-  # Crypto / Sensitive Data
-  crypto: 10
-  base64: 5
-  short_key: 15
-  weak_key: 15
-  ecb: 20
-  iv: 10
   token: 10
   auth: 10
   jwt: 10
   key: 10
+  secret: 10
+  sensitive: 10
+  password: 12
+  credential: 10
+  oauth_token: 15
 
-  # Filesystem / Event Metadata
+  # Cloud-related
+  aws_key: 20
+  gcp_key: 20
+  firebase_url: 12
+
+  # Filesystem and misc
   filesystem: 8
   system: 8
-  data: 5
   write: 5
+  adb: 10
+  signing_bypass: 15
+  keystore: 12
+  clipboard: 10
+  sms: 10
+  inbox: 10
+  accessibility_event: 12
 
-  # Other
+  # Threat techniques
   evasion: 10
-  xor: 10
   keylogger: 20
+  spyware: 15
+  tracker: 10
+  playprotect_bypass: 15
+  native_exec: 15
+  dex_reflection: 12
+  turkish_strings: 12
+  gate_php: 20
 
 severity_score:
   low: 5
   medium: 10
   high: 20
+  critical: 30
 
 path_type_score:
   sensitive: 20
   system_access: 15
-  obfuscated_write: 10
+  obfuscated_write: 12
   config: 10
   app_storage: 5
   general: 0
+  signing_bypass: 15
+  keystore_access: 15

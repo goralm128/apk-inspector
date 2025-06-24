@@ -46,11 +46,10 @@ class StaticHeuristicEvaluator:
 
         if static_info.get("reflection_usage", False):
             score += 10
-            reasons.append("[MEDIUM] Uses reflection")
-
+            reasons.append("[MEDIUM] Reflection usage (could indicate dynamic invocation)")
         if static_info.get("obfuscation_detected", False):
             score += 15
-            reasons.append("[HIGH] Obfuscation detected")
+            reasons.append("[HIGH] Obfuscation heuristics detected")
 
         # --- Dangerous Permissions ---
         for perm in dangerous_permissions:
@@ -115,10 +114,23 @@ class StaticHeuristicEvaluator:
                 pts, msg = StaticHeuristicEvaluator.INTENT_WEIGHTS[intent]
                 score += pts
                 reasons.append(msg)
+                
+        for warning in static_info.get("static_warnings", []):
+            t = warning.get("type", "")
+            msg = warning.get("message", "")
+            if "debug" in t or "testkey" in msg:
+                score += 10
+                reasons.append(f"[HIGH] {msg}")
+            elif "suspicious_string" in t:
+                confidence = warning.get("confidence", "")
+                if confidence == "high":
+                    score += 7
+                    reasons.append(f"[HIGH] Suspicious string: {msg}")
+                elif confidence == "medium":
+                    score += 3
+                    reasons.append(f"[MEDIUM] Suspicious string: {msg}")
 
         # --- Final normalization ---
         MAX_RAW_STATIC_SCORE = 60
-        capped = min(score, MAX_RAW_STATIC_SCORE)
-        normalized_score = int((capped / MAX_RAW_STATIC_SCORE) * 10)
-
-        return normalized_score, reasons
+        capped_score = min(score, MAX_RAW_STATIC_SCORE)
+        return score, capped_score, reasons

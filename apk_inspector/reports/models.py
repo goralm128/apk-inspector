@@ -2,7 +2,6 @@ from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Any, Optional
 from uuid import uuid4
 from datetime import datetime
-from apk_inspector.reports.schemas import YaraMatchModel
 
 
 @dataclass
@@ -52,7 +51,7 @@ class TriggeredRuleResult:
     event_id: Optional[str] = None
     technique_id: Optional[str] = None # e.g., MITRE ATT&CK ID like T1059
     tactic: Optional[str] = None # e.g., MITRE ATT&CK tactic like Execution
-    rule_source: str = "dynamic" # Could be: static | dynamic | yara
+    rule_source: str = "dynamic" # Can be: static | dynamic | yara
     verdict: Optional[str] = None       # Optional: used for final classification/labeling
 
 @dataclass
@@ -70,6 +69,8 @@ class Verdict:
     hook_score: int = 0
     triggered_rule_results: List[TriggeredRuleResult] = field(default_factory=list)
     scoring_justification: Dict[str, int] = field(default_factory=dict)
+    risk_breakdown: Dict[str, int] = field(default_factory=dict)
+    behavioral_categories: List[str] = field(default_factory=list)
     
 @dataclass
 class ApkSummary:

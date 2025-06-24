@@ -1,4 +1,3 @@
-import os
 import sys
 import re
 import math
@@ -18,6 +17,7 @@ SUSPICIOUS_PATTERNS = [
     ("hex_string", r"\b(?:0x)?[0-9a-fA-F]{32,}\b"),
 ]
 
+ANALYZED_EXTENSIONS = {".smali", ".txt", ".json", ".xml", ".conf", ".ini", ".yml", ".dat"}
 
 def string_entropy(s: str) -> float:
     if not s:
@@ -25,6 +25,12 @@ def string_entropy(s: str) -> float:
     prob = [float(s.count(c)) / len(s) for c in dict.fromkeys(s)]
     return -sum(p * math.log2(p) for p in prob)
 
+def classify_confidence(entropy: float) -> str:
+    if entropy > 3.5:
+        return "high"
+    if entropy > 2.5:
+        return "medium"
+    return "low"
 
 def safe_read_file(file_path: Path) -> str:
     try:
@@ -55,7 +61,10 @@ def extract_suspicious_strings(decompiled_dir: Path) -> List[Dict[str, str]]:
         logger.error(f"[STRING EXTRACTOR] Provided path does not exist: {decompiled_dir}")
         return results
 
-    for file in decompiled_dir.rglob("*.smali"):
+    for file in decompiled_dir.rglob("*"):
+        if not file.is_file() or file.suffix.lower() not in ANALYZED_EXTENSIONS:
+            continue
+        
         content = safe_read_file(file)
         if not content:
             continue
@@ -65,13 +74,13 @@ def extract_suspicious_strings(decompiled_dir: Path) -> List[Dict[str, str]]:
                 if (label, match) in seen_matches:
                     continue
                 seen_matches.add((label, match))
-
                 entropy = string_entropy(match)
                 results.append({
                     "file": str(file.relative_to(decompiled_dir)),
                     "type": label,
                     "match": match,
-                    "entropy": round(entropy, 2)
+                    "entropy": round(entropy, 2),
+                    "confidence": classify_confidence(entropy)
                 })
 
     logger.info(f"[STRING EXTRACTOR] Completed with {len(results)} suspicious strings found.")

@@ -1,6 +1,8 @@
 from xml.etree import ElementTree as ET
 from pathlib import Path
 from typing import List, Dict
+import re
+
 from apk_inspector.utils.logger import get_logger
 
 logger = get_logger()
@@ -33,6 +35,25 @@ ANDROID_DANGEROUS_PERMISSIONS = {
     "android.permission.RECEIVE_MMS"
 }
 
+SUSPICIOUS_PERMISSIONS = {
+    "android.permission.QUERY_ALL_PACKAGES",
+    "android.permission.SYSTEM_ALERT_WINDOW",
+    "android.permission.BIND_ACCESSIBILITY_SERVICE",
+    "android.permission.REQUEST_INSTALL_PACKAGES",
+    "android.permission.REQUEST_DELETE_PACKAGES",
+    "android.permission.RECEIVE_BOOT_COMPLETED",
+    "android.permission.FOREGROUND_SERVICE",
+}
+
+HIGH_RISK_ACTIONS = {
+    "android.provider.Telephony.SMS_RECEIVED",
+    "android.intent.action.BOOT_COMPLETED",
+    "android.intent.action.SEND",
+    "android.intent.action.RESPOND_VIA_MESSAGE",
+    "android.intent.action.PACKAGE_ADDED",
+    "android.intent.action.QUICKBOOT_POWERON",
+}
+
 def get_android_attrib(elem: ET.Element, name: str) -> str:
     return elem.attrib.get(f"{{{ANDROID_NS}}}{name}", "")
 
@@ -44,11 +65,23 @@ def extract_permissions(root: ET.Element) -> List[str]:
     ]
 
 def identify_dangerous_permissions(permissions: List[str]) -> List[str]:
-    """
-    Return only those permissions which exactly match a known
-    dangerous Android permission.
-    """
     return [p for p in permissions if p in ANDROID_DANGEROUS_PERMISSIONS]
+
+def identify_suspicious_permissions(permissions: List[str]) -> List[str]:
+    return [p for p in permissions if p in SUSPICIOUS_PERMISSIONS]
+
+def is_obfuscated_package(package_name: str) -> bool:
+    return bool(re.fullmatch(r'[a-z]+\.[a-z0-9]{10,}\.[a-z0-9]{10,}', package_name))
+
+def detect_accessibility_service(root: ET.Element) -> bool:
+    for service in root.findall(".//service"):
+        permission = get_android_attrib(service, "permission")
+        if permission == "android.permission.BIND_ACCESSIBILITY_SERVICE":
+            for intent in service.findall("intent-filter"):
+                for action in intent.findall("action"):
+                    if get_android_attrib(action, "name") == "android.accessibilityservice.AccessibilityService":
+                        return True
+    return False
 
 def extract_components(root: ET.Element) -> Dict[str, List[Dict]]:
     tag_map = {
@@ -79,6 +112,28 @@ def extract_components(root: ET.Element) -> Dict[str, List[Dict]]:
 
     return components
 
+def identify_exposed_risky_components(components: Dict[str, List[Dict]]) -> List[Dict]:
+    risky = []
+    for group in components.values():
+        for comp in group:
+            if comp["exported"] and any(a in HIGH_RISK_ACTIONS for a in comp["intent_filters"]):
+                risky.append(comp)
+    return risky
+
+def extract_manifest_warnings(root: ET.Element) -> List[Dict[str, str]]:
+    warnings = []
+    app_node = root.find("application")
+
+    if app_node is not None:
+        if get_android_attrib(app_node, "debuggable") == "true":
+            warnings.append({"type": "debuggable", "message": "App is debuggable — can be exploited."})
+        if get_android_attrib(app_node, "allowBackup") == "true":
+            warnings.append({"type": "allow_backup", "message": "Backup is allowed — risk of data leakage."})
+        shared_user_id = app_node.attrib.get("sharedUserId")
+        if shared_user_id:
+            warnings.append({"type": "shared_user_id", "message": f"App uses sharedUserId: {shared_user_id}"})
+    return warnings
+
 def analyze_manifest(manifest_path: Path) -> dict:
     try:
         tree = ET.parse(manifest_path)
@@ -86,12 +141,24 @@ def analyze_manifest(manifest_path: Path) -> dict:
 
         permissions = extract_permissions(root)
         dangerous_perms = identify_dangerous_permissions(permissions)
+        suspicious_perms = identify_suspicious_permissions(permissions)
         components = extract_components(root)
+        risky_components = identify_exposed_risky_components(components)
+        accessibility_abuse = detect_accessibility_service(root)
+        package_name = root.attrib.get("package", "")
+        obfuscated = is_obfuscated_package(package_name)
+        manifest_warnings = extract_manifest_warnings(root)
 
         return {
+            "package_name": package_name,
             "permissions": permissions,
             "dangerous_permissions": dangerous_perms,
-            "components": components
+            "suspicious_permissions": suspicious_perms,
+            "components": components,
+            "risky_components": risky_components,
+            "has_accessibility_service": accessibility_abuse,
+            "is_obfuscated_package": obfuscated,
+            "manifest_warnings": manifest_warnings
         }
 
     except Exception as ex:
