@@ -8,7 +8,7 @@ from apk_inspector.visual.chart_utils import (
     generate_stacked_chart, generate_risk_breakdown_chart, generate_tag_pie_chart
 )
 from apk_inspector.visual.tag_heatmap import visualize_tag_heatmap
-from apk_inspector.visual.per_apk_dashboard import generate_per_apk_dashboard
+from apk_inspector.visual.apk_dashboard_generator import generate_per_apk_dashboard
 
 from apk_inspector.utils.logger import get_logger
 
