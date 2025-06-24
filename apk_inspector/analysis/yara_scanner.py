@@ -1,9 +1,8 @@
 import yara
 import pkg_resources
-import pandas as pd
+import re
 from pathlib import Path
 from typing import List
-import re
 from apk_inspector.reports.yara_match_model import YaraMatchModel
 from apk_inspector.utils.yara_cleaner import clean_yara_match
 from apk_inspector.utils.yara_utils import serialize_yara_strings
@@ -15,100 +14,83 @@ class YaraScanner:
         self.logger = get_logger()
 
         try:
-            yara_version = pkg_resources.get_distribution("yara-python").version
-            self.logger.info(f"[YARA] Using yara-python version {yara_version}")
+            version = pkg_resources.get_distribution("yara-python").version
+            self.logger.info(f"[YARA] Using yara-python version {version}")
         except Exception as ex:
             self.logger.warning(f"[YARA] Could not determine yara-python version: {ex}")
 
         self.rules = self._compile_yara_rules()
 
-        # Define high-interest path patterns (Android malware best practices)
+        # Expanded file pattern set
         self.allowed_patterns = [
-            re.compile(r"^smali/(com|net|org)/[a-z0-9]{10,}/"),  # likely obfuscated root packages
-            re.compile(r"^smali/.*?/Main.*?\.smali$"),  # entry point classes
-            re.compile(r"^smali/.*?/MyService.*?\.smali$"),  # suspicious services
-            re.compile(r"^smali/.*?/(Overlay|Accessibility|AccessibilityNode).*?\.smali$"),  # abuse-prone features
-            re.compile(r"^smali/okhttp3/ConnectionSpec\.smali$"),  # known abuse target
-            re.compile(r"^smali/.*?/x(\.smali)?$"),  # short obfuscated classes
+            re.compile(r"^smali/"),
+            re.compile(r"^smali_classes2/"),
+            re.compile(r"^assets/scripts/"),
+            re.compile(r"^assets/"),
         ]
 
-    def _compile_yara_rules(self) -> yara.Rules | None:
+    def _compile_yara_rules(self):
         if not self.rules_dir.exists():
             self.logger.warning(f"[YARA] Rules directory not found: {self.rules_dir}")
             return None
-
-        sources = {
-            rule_file.stem: str(rule_file)
-            for rule_file in self.rules_dir.glob("*.yar")
-        }
-
+        paths = {f.stem: str(f) for f in self.rules_dir.glob("*.yar")}
         try:
-            compiled = yara.compile(filepaths=sources)
-            self.logger.info(f"[YARA] Compiled {len(sources)} YARA rule files with namespaces.")
+            compiled = yara.compile(filepaths=paths)
+            self.logger.info(f"[YARA] Compiled {len(paths)} rules with namespaces.")
             return compiled
         except Exception as ex:
-            self.logger.error(f"[YARA] Failed to compile rules with namespaces: {ex}")
+            self.logger.error(f"[YARA] Failed to compile rules: {ex}")
             return None
 
-
-    def scan_directory(self, target_dir: Path, max_file_size: int = 5 * 1024 * 1024) -> List[YaraMatchModel]:
+    def scan_directory(self, target_dir: Path, timeout: int = 50, max_file_size: int = 5*1024*1024) -> List[YaraMatchModel]:
         if not self.rules:
-            self.logger.warning("[YARA] No compiled rules available. Skipping scan.")
+            self.logger.warning("[YARA] No compiled rules — skipping.")
             return []
-
         if not target_dir.exists():
-            self.logger.warning(f"[YARA] Target directory does not exist: {target_dir}")
+            self.logger.warning(f"[YARA] Target directory not found: {target_dir}")
             return []
 
         matches = []
-        skipped_dirs = {"lib", "res", "original", "assets", "META-INF", ".git", ".idea", ".gradle", "build"}
-        skipped_exts = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".mp3", ".mp4", ".ogg", ".wav", ".ttf", ".otf",
-                        ".so", ".apk", ".dex", ".jar", ".zip", ".bin", ".dat"}
+        skipped_exts = {".png", ".jpg", ".so", ".ttf", ".jar", ".zip", ".apk", ".dex", ".bin"}
 
-        files_to_scan = []
         for file in target_dir.rglob("*"):
             if not file.is_file():
                 continue
 
-            rel_path = file.relative_to(target_dir).as_posix()
+            rel = file.relative_to(target_dir).as_posix()
+            ext = file.suffix.lower()
 
-            if (
-                "smali/kotlin/" in rel_path or
-                file.suffix.lower() in skipped_exts or
-                file.stat().st_size > max_file_size or
-                (file.parts[0] in skipped_dirs if file.parts else False) or
-                not any(p.match(rel_path) for p in self.allowed_patterns)
-            ):
+            if ext in skipped_exts or file.stat().st_size > max_file_size:
                 continue
 
-            files_to_scan.append(file)
+            if not any(p.match(rel) for p in self.allowed_patterns):
+                continue
 
-        if not files_to_scan:
-            self.logger.info(f"[YARA] No eligible files to scan in: {target_dir}")
-            return []
-
-        for file in files_to_scan:
             try:
-                results = self.rules.match(filepath=str(file), timeout=10)
-                for match in results:
-                    tags, meta = clean_yara_match(match)
+                self.logger.debug(f"[YARA] Scanning {rel}")
+                results = self.rules.match(filepath=str(file), timeout=timeout)
+
+                for m in results:
+                    tags, meta = clean_yara_match(m)
                     try:
-                        serialized_strings = serialize_yara_strings(match.strings)
-                    except Exception as string_err:
-                        self.logger.warning(
-                            f"[YARA] Failed to serialize match.strings in {file} ({match.rule}): {string_err}"
-                        )
-                        serialized_strings = []
+                        ystrs = serialize_yara_strings(m.strings)
+                    except Exception as strerr:
+                        self.logger.warning(f"[YARA] Failed serializing strings in {rel}/{m.rule}: {strerr}")
+                        ystrs = []
 
                     matches.append(YaraMatchModel(
-                        file=str(file.relative_to(target_dir)),
-                        rule=match.rule,
+                        file=rel,
+                        rule=m.rule,
                         tags=tags,
                         meta=meta,
-                        strings=serialized_strings,
-                        namespace=str(match.namespace),
+                        strings=ystrs,
+                        namespace=m.namespace
                     ))
-            except Exception as ex:
-                self.logger.warning(f"[YARA] Scan failed on {file}: {ex}")
 
+            except yara.TimeoutError:
+                self.logger.warning(f"[YARA] Timeout scanning {rel}")
+            except Exception as ex:
+                self.logger.warning(f"[YARA] Error scanning {rel}: {ex}")
+
+        self.logger.info(f"[YARA] Collected {len(matches)} matches from {target_dir}")
         return matches
