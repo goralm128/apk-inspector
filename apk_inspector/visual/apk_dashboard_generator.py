@@ -11,6 +11,25 @@ def _load_json(report_json: Path) -> Optional[dict]:
     except Exception as e:
         get_logger().error(f"[!] Failed to load JSON report: {e}")
         return None
+      
+def _render_permissions(data: dict) -> str:
+    manifest = data.get("static_analysis", {}).get("manifest_analysis", {})
+    permissions = manifest.get("permissions", [])
+    dangerous = manifest.get("dangerous_permissions", [])
+
+    if not permissions:
+        return ""
+
+    html = ['<h3>🔐 Permissions Overview</h3>']
+    html.append('<table style="width:100%; border-collapse: collapse;">')
+    html.append('<thead><tr><th>Permission</th><th>Dangerous</th></tr></thead><tbody>')
+
+    for perm in sorted(set(permissions)):
+        is_dangerous = "✅" if perm in dangerous else ""
+        html.append(f"<tr><td>{perm}</td><td style='text-align:center;'>{is_dangerous}</td></tr>")
+
+    html.append("</tbody></table>")
+    return "\n".join(html)
 
 
 def _render_risk_table(data: dict) -> str:
@@ -55,6 +74,26 @@ def _render_charts(apk_dir: Path, charts: list) -> str:
     return "\n".join(html)
 
 
+def _render_permissions(data: dict) -> str:
+    manifest = data.get("static_analysis", {}).get("manifest_analysis", {})
+    permissions = manifest.get("permissions", [])
+    dangerous = set(manifest.get("dangerous_permissions", []))
+
+    if not permissions:
+        return ""
+
+    html = ['<h3>🔐 Permissions Overview</h3>']
+    html.append('<table style="width:100%; border-collapse: collapse;">')
+    html.append('<thead><tr><th>Permission</th><th>Dangerous</th></tr></thead><tbody>')
+
+    for perm in sorted(set(permissions)):
+        is_dangerous = "🛑 Yes" if perm in dangerous else ""
+        html.append(f"<tr><td>{perm}</td><td style='text-align:center;'>{is_dangerous}</td></tr>")
+
+    html.append("</tbody></table>")
+    return "\n".join(html)
+
+
 def generate_per_apk_dashboard(
     summary: ApkSummary, apk_dir: Path, report_json: Path
 ) -> Optional[Path]:
@@ -65,6 +104,7 @@ def generate_per_apk_dashboard(
         return None
 
     risk_table = _render_risk_table(data)
+    permissions_table = _render_permissions(data)
     charts = [("yara_tag_pie.png", "Tag Distribution"),
               ("risk_breakdown.png", "Risk Breakdown")]
     charts_section = _render_charts(apk_dir, charts)
@@ -149,6 +189,7 @@ def generate_per_apk_dashboard(
   </div>
   {charts_section}
   {risk_table}
+  {permissions_table}
   <div class="download">
     <strong>📄 JSON Report:</strong>
     <details open>
