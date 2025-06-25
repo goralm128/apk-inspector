@@ -2,6 +2,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 import json
+from datetime import timezone
 
 from apk_inspector.reports.models import ApkSummary
 from apk_inspector.utils.logger import get_logger
@@ -118,7 +119,7 @@ def generate_index_page(
     js_initial_json = build_js_initial_json(combined_json)
 
     theme_options = "".join(f"<option value='{name}'>{name}</option>" for name in themes)
-    timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M")
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M")
 
     html = f"""<!DOCTYPE html>
 <html lang="en">
@@ -129,7 +130,7 @@ def generate_index_page(
     body {{ font-family: sans-serif; margin: 40px; transition: background 0.3s; }}
     .badge {{ padding:4px 8px; border-radius:10px; color:#fff; font-weight:bold; }}
     {css}
-    .theme-selector, .search-box {{ margin-bottom:20px; }}
+    .theme-selector, .search-box, .filter-controls {{ margin-bottom:20px; }}
     table {{ width:100%; border-collapse: collapse; }}
     th, td {{ padding:12px; border:1px solid #ccc; }}
     th {{ cursor:pointer; text-align:center; }}
@@ -140,6 +141,7 @@ def generate_index_page(
     .download-btn:hover {{ background:#21867a; }}
     pre {{ background:#f6f8fa; padding:10px; max-height:400px; overflow:auto;
       border:1px solid #ccc; font-family:monospace; }}
+    select {{ padding: 6px; margin-left: 10px; }}
   </style>
 </head>
 <body class="theme-Default">
@@ -148,6 +150,16 @@ def generate_index_page(
 
   <div class="theme-selector">
     Theme: <select id="themeSelect">{theme_options}</select>
+  </div>
+
+  <div class="filter-controls">
+    Filter by Classification:
+    <select id="classificationFilter">
+      <option value="All">All</option>
+      <option value="malicious">Malicious</option>
+      <option value="suspicious">Suspicious</option>
+      <option value="benign">Benign</option>
+    </select>
   </div>
 
   <div class="search-box">
@@ -159,10 +171,10 @@ def generate_index_page(
 
   <table id="apk-table">
     <thead><tr>
-      <th onclick="sortTable(0)">Package ▲▼</th>
-      <th onclick="sortTable(1)">Classification ▲▼</th>
-      <th onclick="sortTable(2)">Risk Score ▲▼</th>
-      <th onclick="sortTable(3)">CVSS Band ▲▼</th>
+      <th onclick="sortTable(0)">Package</th>
+      <th onclick="sortTable(1)">Classification</th>
+      <th onclick="sortTable(2)">Risk Score</th>
+      <th onclick="sortTable(3)">CVSS Band</th>
     </tr></thead>
     <tbody>{rows}</tbody>
   </table>
@@ -195,11 +207,18 @@ def generate_index_page(
     document.getElementById("themeSelect").onchange = e => {{
       document.body.className = "theme-" + e.target.value;
     }};
+
+    document.getElementById("classificationFilter").onchange = function () {{
+      const selected = this.value.toLowerCase();
+      document.querySelectorAll("#apk-table tbody tr").forEach(row => {{
+        const classification = row.cells[1].innerText.toLowerCase();
+        row.style.display = (selected === "all" || classification === selected) ? "" : "none";
+      }});
+    }};
   </script>
 </body>
 </html>
 """
-
     index_path.write_text(html, encoding="utf-8")
     logger.info(f"[✓] Summary index generated: {index_path.name}")
     return index_path
