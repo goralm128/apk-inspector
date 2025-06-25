@@ -1,7 +1,6 @@
 from typing import List, Dict
 from pathlib import Path
-from datetime import datetime
-from dataclasses import asdict
+from datetime import datetime, timezone
 
 from apk_inspector.reports.models import ApkSummary
 from apk_inspector.reports.summary.summary_builder import ApkSummaryBuilder
@@ -24,7 +23,7 @@ class FullReportAggregator:
                 if isinstance(analyzed_at, datetime):
                     report["apk_metadata"]["analyzed_at"] = analyzed_at.isoformat()
         metadata_wrapper = {
-            "generated_at": datetime.utcnow().isoformat() + "Z",
+            "generated_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z'),
             "apk_count": len(reports),
             "reports": reports
         }

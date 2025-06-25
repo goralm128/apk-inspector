@@ -1,7 +1,7 @@
 import subprocess
 import re
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timezone
 from apk_inspector.utils.logger import get_logger
 
 logger = get_logger()
@@ -27,7 +27,7 @@ def analyze_certificate(apk_path: Path) -> dict:
         cert_blocks = output.strip().split("Owner:")
 
         parsed_certs = []
-        now = datetime.utcnow()
+        now = datetime.now(timezone.utc)
         weak_algo_found = False
         debug_cert_found = False
         expired = False
