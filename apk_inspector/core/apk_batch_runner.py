@@ -1,4 +1,5 @@
 
+import time
 from pathlib import Path
 from typing import List, Dict, Any, Tuple
 from functools import partial
@@ -8,7 +9,6 @@ from apk_inspector.reports.report_manager import ReportManager
 from apk_inspector.reports.models import ApkSummary
 from apk_inspector.analysis.apk_analysis import analyze_apk_and_summarize
 from apk_inspector.utils.logger import get_logger
-from apk_inspector.utils.report_utils import build_error_report
 from apk_inspector.utils.batch_helpers import safe_analyze_parallel
 
 
@@ -37,6 +37,9 @@ class APKBatchRunner:
         self.logger = get_logger()
 
     def run(self):
+        """
+        Runs the batch APK analysis in serial or parallel mode and stores valid results.
+        """
         mode = "parallel" if self.parallel else "serial"
         self.logger.info(f"[*] Running APK analysis in {mode} mode...")
 
@@ -51,6 +54,7 @@ class APKBatchRunner:
         results = []
         for apk_path in self.apk_paths:
             try:
+                start_time = time.perf_counter()
                 full_report, summary = analyze_apk_and_summarize(
                     apk_path,
                     hooks_dir=self.hooks_dir,
@@ -58,13 +62,13 @@ class APKBatchRunner:
                     verbose=True,
                     timeout=self.timeout
                 )
-                #  Save individual full report
-                #self.report_saver.save_report(full_report)
-
+                elapsed_time = time.perf_counter() - start_time
+                print(f"[✓] Analysis completed for {apk_path.name} in {elapsed_time:.2f} seconds.")
+                self.logger.info(f"[✓] Analysis completed for {apk_path.name} in {elapsed_time:.2f} seconds.")
                 results.append((full_report, summary))
-                # Force GC and Frida shutdown
-                import gc, frida
-                gc.collect()
+                # Force GC
+                # import gc
+                # gc.collect()
                              
             except Exception as ex:
                 self.logger.error(f"[✗] Analysis failed for {apk_path.name}: {ex}")

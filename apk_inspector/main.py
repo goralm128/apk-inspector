@@ -60,6 +60,11 @@ def run_analysis():
 
 
 def main():
+    """
+    Main entry point for running APK analysis.
+    Validates directories, prepares logging, and runs the batch analysis.
+    Returns 0 on success, 1 on error.
+    """
     try:
         sys.exit(run_analysis())
     except Exception as ex:
