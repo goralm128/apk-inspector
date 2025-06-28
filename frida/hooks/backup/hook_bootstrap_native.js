@@ -40,7 +40,7 @@
   try {
     await safeAttach("open", {
       onEnter(args) {
-        this.path = readSafeUtf8(args[0]);
+        this.path = normalizePath(readSafeUtf8(args[0]));
         this.ctx = this.context;
       },
       onLeave(retval) {

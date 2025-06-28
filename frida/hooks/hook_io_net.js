@@ -4,8 +4,8 @@
   const metadata = {
     name: "hook_io_net",
     category: "network",
-    description: "Hooks native socket I/O and flags C2 indicators (ports, IPs)",
-    tags: ["native", "network", "send", "recv", "threat_intel"],
+    description: "Hooks native socket I/O and flags suspicious C2 indicators",
+    tags: ["native", "network", "send", "recv", "threat_intel", "c2"],
     sensitive: true,
     entrypoint: "native"
   };
@@ -42,7 +42,7 @@
     try {
       return Thread.backtrace(ctx, Backtracer.ACCURATE)
         .map(DebugSymbol.fromAddress)
-        .map(sym => `${sym.moduleName || "?"}!${sym.name || "?"} @ ${sym.address}`);
+        .map(sym => `${sym.moduleName || "?"}!${sym.name || "?"}@${sym.address}`);
     } catch (_) {
       return ["<no backtrace>"];
     }
@@ -67,6 +67,7 @@
         onLeave(retval) {
           const bytes = retval?.toInt32?.() ?? -1;
           const { flagged_ip, flagged_port, tags: threat_tags } = isFlagged(this.ip, this.port);
+          const suspicious = flagged_ip || flagged_port || bytes > 8192;
 
           const args = {
             direction: this.fn === "send" ? "outbound" : "inbound",
@@ -75,7 +76,7 @@
             port: this.port,
             bytes,
             error: bytes < 0,
-            suspicious: flagged_ip || flagged_port || bytes > 8192,
+            suspicious,
             threat_tags
           };
 
@@ -93,11 +94,12 @@
             action: this.fn,
             context: { stack: formatBacktrace(this.ctx) },
             args,
+            suspicious,
             tags: metadata.tags.concat(threat_tags)
           });
 
           log(event);
-          console.log(`[hook_io_net] ${this.fn}(${this.fd}) ${bytes} bytes → ${this.ip}:${this.port}`);
+          console.log(`[hook_io_net] ${this.fn}(${this.fd}) ${bytes} bytes → ${this.ip}:${this.port} [suspicious=${suspicious}]`);
         }
       }, null, {
         maxRetries: 10,

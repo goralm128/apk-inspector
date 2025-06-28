@@ -1,5 +1,12 @@
 'use strict';
 
+/**
+ * hook_jni.js
+ *
+ * Detects process forks via native syscalls: fork(), clone(), vfork().
+ * Useful for identifying sandbox evasion and process injection behaviors.
+ */
+
 (async function () {
   const metadata = {
     name: "hook_jni",
@@ -11,20 +18,35 @@
   };
 
   const log = createHookLogger(metadata);
-
   const hookList = ["fork", "clone", "vfork"];
   const hooked = [];
+
+  const getBacktrace = ctx => {
+    try {
+      return Thread.backtrace(ctx, Backtracer.ACCURATE)
+        .map(DebugSymbol.fromAddress)
+        .slice(0, 8)
+        .map(sym => `${sym.moduleName || "?"}!${sym.name || "?"}@${sym.address}`);
+    } catch (_) {
+      return ["<no backtrace>"];
+    }
+  };
 
   for (const fn of hookList) {
     try {
       await safeAttach(fn, {
         onEnter(args) {
-          this.parentPid = Process.id;
           this.fn = fn;
+          this.parentPid = Process.id;
+          this.contextInfo = this.context;
         },
         onLeave(retval) {
           const childPid = retval?.toInt32?.();
-          if (childPid === 0) return; // Inside child process; ignore
+          if (childPid === 0) return; // In child process
+
+          const suspicious = ["vfork", "clone"].includes(this.fn); // heuristic: often used to evade sandbox
+          const tags = ["fork_detected"];
+          if (suspicious) tags.push("sandbox_evasion");
 
           const event = buildEvent({
             metadata,
@@ -35,17 +57,15 @@
               child_pid: childPid
             },
             context: {
-              stack: Thread.backtrace(this.context, Backtracer.ACCURATE)
-                .map(DebugSymbol.fromAddress)
-                .slice(0, 8)
-                .map(sym => `${sym.moduleName || "?"}!${sym.name || "?"}@${sym.address}`),
+              stack: getBacktrace(this.contextInfo)
             },
-            suspicious: false
+            suspicious,
+            tags
           });
 
           log(event);
           send({ type: "fork_detected", function: this.fn, child_pid: childPid, parent_pid: this.parentPid });
-          console.log(`[hook_jni] ${this.fn}(): parent=${this.parentPid} → child=${childPid}`);
+          console.log(`[hook_jni] ${this.fn}(): parent=${this.parentPid} → child=${childPid} [suspicious=${suspicious}]`);
         }
       }, null, {
         maxRetries: 5,

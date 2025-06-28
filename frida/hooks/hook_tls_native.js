@@ -1,5 +1,12 @@
 'use strict';
 
+/**
+ * hook_tls_native.js
+ *
+ * Hooks OpenSSL's SSL_write and SSL_get_peer_certificate to monitor encrypted traffic.
+ * Captures SHA1 of outbound buffers and TLS cert fingerprint.
+ */
+
 (async function () {
   const metadata = {
     name: "hook_tls_native",
@@ -13,7 +20,9 @@
   const BACKTRACE_DEPTH = 50;
   const MAX_CAPTURE_BYTES = 8192;
 
-  function getBacktrace(ctx) {
+  const log = await waitForLogger(metadata);
+
+  const getBacktrace = (ctx) => {
     try {
       return Thread.backtrace(ctx, Backtracer.ACCURATE)
         .slice(0, BACKTRACE_DEPTH)
@@ -23,21 +32,17 @@
     } catch (_) {
       return "<no stack>";
     }
-  }
+  };
 
-  function captureHash(ptr, length) {
-    if (!ptr || ptr.isNull() || length <= 0 || length > MAX_CAPTURE_BYTES) {
-      return "<unreadable>";
-    }
+  const captureHash = (ptr, length) => {
+    if (!ptr || ptr.isNull() || length <= 0 || length > MAX_CAPTURE_BYTES) return "<unreadable>";
     try {
       const bytes = Memory.readByteArray(ptr, length);
       return Crypto.digest("sha1", bytes, { encoding: "hex" });
     } catch (_) {
       return "<unreadable>";
     }
-  }
-
-  const log = await waitForLogger(metadata);
+  };
 
   // Hook SSL_write
   await safeAttach("SSL_write", {
@@ -45,71 +50,74 @@
       this.ssl = args[0];
       this.buf = args[1];
       this.len = args[2]?.toInt32?.() ?? 0;
-      this.context = this.context;
+      this.ctx = this.context;
     },
     onLeave(retval) {
-      const bytesWritten = retval?.toInt32?.() ?? -1;
+      const bytes = retval?.toInt32?.() ?? -1;
 
-      const event = {
-        hook: metadata.name,
-        action: "SSL_write",
-        bytes_written: bytesWritten,
-        buffer_sha1: captureHash(this.buf, bytesWritten),
-        error: bytesWritten < 0,
-        suspicious: bytesWritten > MAX_CAPTURE_BYTES,
-        thread: get_thread_name(),
-        threadId: Process.getCurrentThreadId(),
-        processId: Process.id,
-        stack: getBacktrace(this.context),
-        tags: metadata.tags,
+      const event = buildEvent({
         metadata,
-        timestamp: new Date().toISOString()
-      };
+        action: "SSL_write",
+        args: {
+          bytes,
+          buffer_sha1: captureHash(this.buf, bytes),
+          error: bytes < 0
+        },
+        context: { stack: getBacktrace(this.ctx) },
+        suspicious: bytes > MAX_CAPTURE_BYTES,
+        tags: metadata.tags
+      });
 
       log(event);
-      console.log(`[${metadata.name}] SSL_write → ${bytesWritten} bytes`);
+      console.log(`[hook_tls_native] SSL_write → ${bytes} bytes`);
     }
   });
 
-  // Optionally hook SSL_get_peer_certificate
+  // Hook SSL_get_peer_certificate if available
   try {
     const sslLib = Module.findBaseAddress("libssl.so");
     if (sslLib) {
-      const SSL_get_peer_certificate = Module.findExportByName("libssl.so", "SSL_get_peer_certificate");
-      if (SSL_get_peer_certificate) {
-        Interceptor.attach(SSL_get_peer_certificate, {
+      const certFn = Module.findExportByName("libssl.so", "SSL_get_peer_certificate");
+      const x509DerFn = Module.findExportByName("libssl.so", "i2d_X509");
+
+      if (certFn && x509DerFn) {
+        const toDER = new NativeFunction(x509DerFn, 'int', ['pointer', 'pointer']);
+
+        Interceptor.attach(certFn, {
           onLeave(retval) {
             if (!retval.isNull()) {
               try {
-                const certPtr = retval;
-                const x509ToDer = new NativeFunction(Module.findExportByName("libssl.so", "i2d_X509"), 'int', ['pointer', 'pointer']);
-                const len = x509ToDer(certPtr, NULL);
+                const len = toDER(retval, NULL);
                 if (len > 0) {
                   const derBuf = Memory.alloc(len);
-                  x509ToDer(certPtr, derBuf);
-                  const derBytes = Memory.readByteArray(derBuf, len);
-                  const fingerprint = Crypto.digest("sha1", derBytes, { encoding: "hex" });
+                  toDER(retval, derBuf);
+                  const der = Memory.readByteArray(derBuf, len);
+                  const sha1 = Crypto.digest("sha1", der, { encoding: "hex" });
+
                   log(buildEvent({
                     metadata,
                     action: "SSL_get_peer_certificate",
-                    args: { sha1: fingerprint },
+                    args: { sha1 },
                     context: {}
                   }));
-                  console.log(`[${metadata.name}] cert fingerprint: ${fingerprint}`);
+
+                  console.log(`[hook_tls_native] cert fingerprint: ${sha1}`);
                 }
               } catch (e) {
-                console.error(`[${metadata.name}] SSL_get_peer_certificate error: ${e}`);
+                console.error(`[hook_tls_native] cert parse failed: ${e}`);
               }
             }
           }
         });
-        console.log(`[${metadata.name}] Hooked SSL_get_peer_certificate`);
+
+        console.log(`[hook_tls_native] Hooked SSL_get_peer_certificate`);
       }
     }
   } catch (e) {
-    console.error(`[${metadata.name}] Failed to hook certificate API: ${e}`);
+    console.error(`[hook_tls_native] Cert hook error: ${e}`);
   }
-  log(buildEvent({ metadata, action: "hook_loaded", args: {} }));
-  send({ type: "hook_loaded", hook: metadata.name, java: false });
+
+  log(buildEvent({ metadata, action: "hook_loaded" }));
+  send({ type: "hook_loaded", hook: metadata.name });
   console.log(`[+] ${metadata.name} initialized`);
 })();

@@ -50,7 +50,14 @@ def analyze_apk_and_summarize(
 
     except Exception as ex:
         logger.exception(f"[✗] Failure analyzing {apk_path.name}")
-        return _error_report(apk_path, str(ex)), ApkSummary(error=str(ex))
+        return _error_report(apk_path, str(ex)), ApkSummary(
+            apk_name=apk_path.name,
+            apk_package="unknown.package",
+            sha256="N/A",
+            classification="error",
+            risk_score=0,
+            error=str(ex)
+        )
 
     finally:
         if not keep_installed:

@@ -42,7 +42,7 @@
           this.fd = args[0]?.toInt32?.() ?? -1;
           this.buf = args[1];
           this.len = args[2]?.toInt32?.() ?? 0;
-          this.path = resolveFdPath(this.fd);
+          this.path = normalizePath(resolveFdPath(this.fd));
           this.ctx = this.context;
         },
         onLeave(retval) {

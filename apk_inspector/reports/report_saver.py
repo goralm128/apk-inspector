@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import List, Dict, Optional, Any
 from collections import defaultdict
 import pandas as pd
-from apk_inspector.reports.schemas import YaraMatchModel
+from apk_inspector.reports.yara_match_model import YaraMatchModel
 from apk_inspector.utils.logger import get_logger
 import re
 

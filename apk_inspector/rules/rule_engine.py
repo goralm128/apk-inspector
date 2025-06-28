@@ -250,8 +250,8 @@ class RuleEngine:
 
     def _evaluate_static(self, static_info: Dict[str, Any]) -> Tuple[int, List[str]]:
         try:
-            score, reasons = StaticHeuristicEvaluator.evaluate(static_info)
-            return score, [f"[STATIC] {r}" for r in reasons]
+            raw_score, capped_score, reasons = StaticHeuristicEvaluator.evaluate(static_info)
+            return capped_score, [f"[STATIC] {r}" for r in reasons]
         except Exception as ex:
             logger.exception("[RuleEngine] Static analysis failed")
             return 0, [f"[ERROR] Static analysis failure: {ex}"]
@@ -338,8 +338,7 @@ class RuleEngine:
         
     def _compute_cvss_band(self, rules: List[TriggeredRuleResult]) -> str:
         cvss_scores = [r.cvss for r in rules if isinstance(r, TriggeredRuleResult)]
-        max_cvss = max(cvss_scores, default=0.0)
-        return compute_cvss_band(max_cvss)
+        return compute_cvss_band(cvss_scores)
     
     def evaluate(
         self,
@@ -351,28 +350,35 @@ class RuleEngine:
 
         logger.info(f"[RuleEngine] Evaluation started: {len(events)} events")
 
-        static_score, static_reasons = self._evaluate_static(static_info) if static_info else (0, [])
-        dynamic_scaled_score, dynamic_rule_bonus, dynamic_reasons, high_risk, net_flag, rule_results, scoring_justification = self._evaluate_dynamic(events)
+        static_score_raw, static_reasons = self._evaluate_static(static_info) if static_info else (0, [])
+        dynamic_scaled_score_raw, dynamic_rule_bonus_raw, dynamic_reasons, high_risk, net_flag, rule_results, scoring_justification = self._evaluate_dynamic(events)
         hook_score, hook_reasons = self._evaluate_hook_coverage(hook_coverage) if hook_coverage else (0, [])
-        yara_score, yara_reasons = self._evaluate_yara(yara_hits) if yara_hits else (0, [])
+        yara_score_raw, yara_reasons = self._evaluate_yara(yara_hits) if yara_hits else (0, [])
 
-        logger.info(f"[RuleEngine] Static score: {static_score}, Dynamic score: {dynamic_scaled_score}, YARA score: {yara_score}, Hook score: {hook_score}")
+        # ─── Enforce Component Caps ─────────────────────────────
+        static_score = min(static_score_raw, 20)
+        dynamic_scaled_score = min(dynamic_scaled_score_raw, 40)
+        dynamic_rule_bonus = min(dynamic_rule_bonus_raw, 20)
+        yara_score = min(yara_score_raw, 20)
+
+        logger.info(f"[RuleEngine] Scores after capping — Static: {static_score}, Dynamic: {dynamic_scaled_score}, Rule bonus: {dynamic_rule_bonus}, YARA: {yara_score}, Hook: {hook_score}")
+
         total_score = static_score + dynamic_scaled_score + dynamic_rule_bonus + yara_score
         capped_total_score = min(total_score, 100)
 
         all_reasons = static_reasons + dynamic_reasons + yara_reasons + hook_reasons
-        
+
         if hook_score == 0:
             all_reasons.append("[⚠DYNAMIC] No hooks fired – analysis coverage may be incomplete")
         elif hook_score < 5:
             all_reasons.append("[ℹDYNAMIC] Limited hook coverage")
-        
+
         label = self._label_from_score(capped_total_score, dynamic_scaled_score)
         logger.info(f"[RuleEngine] Final score={capped_total_score}, label={label}, dynamic_scaled_score={dynamic_scaled_score}")
 
         if not rule_results:
             logger.warning("[RuleEngine] No rules were triggered — check hook coverage and rule effectiveness.")
-            
+
         cvss_band = self._compute_cvss_band(rule_results)
 
         return Verdict(

@@ -49,12 +49,16 @@
           this.fd = args?.[0]?.toInt32?.() ?? -1;
           this.buf = args?.[1];
           this.len = args?.[2]?.toInt32?.() ?? 0;
-          this.path = resolveFdPath(this.fd);
+          this.path = normalizePath(resolveFdPath(this.fd));
           this.ctx = this.context;
         },
         onLeave(retval) {
           const bytes = retval?.toInt32?.() ?? -1;
-          const suspicious = this.len > 4096 || /proc|cache|tmp|su|sh/i.test(this.path);
+          const suspicious = (
+            this.len > 8192 ||
+            /\/proc\/\d+\/(maps|mem|cmdline|fd)/i.test(this.path) ||
+            this.path.endsWith(".so") || this.path.includes("/tmp") || /su$/.test(this.path)
+          );
           const hash = (bytes > 0 && bytes <= 2048)
             ? captureBufferHash(this.buf, bytes)
             : undefined;

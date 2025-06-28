@@ -1,5 +1,12 @@
 'use strict';
 
+/**
+ * hook_socket_io.js
+ *
+ * Hooks native socket operations (connect, send, recv) to flag communications with
+ * known malicious IPs/ports or unusually large data transfers.
+ */
+
 (async function () {
   const metadata = {
     name: "hook_socket_io",
@@ -19,32 +26,32 @@
   const fdMap = {};
   const ntohs = n => ((n & 0xff) << 8) | ((n >> 8) & 0xff);
 
-  function resolvePeer(fd) {
+  const resolvePeer = (fd) => {
     try {
       const sockaddr = Memory.alloc(16);
       const lenPtr = Memory.alloc(Process.pointerSize);
       lenPtr.writeU32(16);
       const getpeername = new NativeFunction(Module.getExportByName(null, "getpeername"), "int", ["int", "pointer", "pointer"]);
       if (getpeername(fd, sockaddr, lenPtr) !== 0) return null;
+
       const family = sockaddr.readU16();
       if (family !== 2) return null;
+
       const port = ntohs(sockaddr.add(2).readU16());
       const ip = Array.from({ length: 4 }, (_, i) => sockaddr.add(4 + i).readU8()).join('.');
       return { ip, port, family };
-    } catch (_) {
+    } catch {
       return null;
     }
-  }
+  };
 
-  function tagSuspicious(ip, port, fn, bytes) {
-    const tags = new Set([...metadata.tags, fn]);
-
+  const tagSuspicious = (ip, port, fn, bytes) => {
+    const tags = new Set([fn, ...metadata.tags]);
     if (BLACKLISTED_IPS.has(ip)) tags.add("blacklisted_ip");
     if (BLACKLISTED_PORTS.has(port)) tags.add("blacklisted_port");
-    if (bytes > 4096 && fn === "send") tags.add("encrypt");
-
+    if (fn === "send" && bytes > 4096) tags.add("large_transfer");
     return Array.from(tags);
-  }
+  };
 
   try {
     const log = await waitForLogger(metadata);
@@ -54,38 +61,32 @@
         this.fd = args[0]?.toInt32?.() ?? -1;
       },
       onLeave(retval) {
-        if (retval?.toInt32?.() === 0 && this.fd !== -1) {
+        if (retval.toInt32?.() === 0 && this.fd !== -1) {
           const peer = resolvePeer(this.fd);
           if (peer) {
             fdMap[this.fd] = peer;
-
-            const ev = {
-              hook: metadata.name,
-              action: "connect",
-              source: "native",
-              fd: this.fd,
-              ip: peer.ip,
-              port: peer.port,
-              family: peer.family,
-              error: false,
-              suspicious: BLACKLISTED_IPS.has(peer.ip) || BLACKLISTED_PORTS.has(peer.port),
-              thread: get_thread_name(),
-              threadId: Process.getCurrentThreadId(),
-              processId: Process.id,
-              tags: tagSuspicious(peer.ip, peer.port, "connect", 0),
+            const event = buildEvent({
               metadata,
-              timestamp: new Date().toISOString()
-            };
-
-            log(ev);
-            console.log(`[${metadata.name}] connect(${this.fd}) → ${peer.ip}:${peer.port}`);
+              action: "connect",
+              args: {
+                fd: this.fd,
+                ip: peer.ip,
+                port: peer.port,
+                family: peer.family,
+                error: false
+              },
+              suspicious: BLACKLISTED_IPS.has(peer.ip) || BLACKLISTED_PORTS.has(peer.port),
+              tags: tagSuspicious(peer.ip, peer.port, "connect", 0)
+            });
+            log(event);
+            console.log(`[hook_socket_io] connect(${this.fd}) → ${peer.ip}:${peer.port}`);
           }
         }
       }
     });
 
-    const funcs = ["send", "recv", "sendto", "recvfrom"];
-    for (const fn of funcs) {
+    const ioFuncs = ["send", "recv", "sendto", "recvfrom"];
+    for (const fn of ioFuncs) {
       await safeAttach(fn, {
         onEnter(args) {
           this.fd = args[0]?.toInt32?.() ?? -1;
@@ -98,34 +99,30 @@
           const ip = peer?.ip || "<unknown>";
           const port = peer?.port || -1;
 
-          const ev = {
-            hook: metadata.name,
-            action: fn,
-            source: "native",
-            fd: this.fd,
-            ip,
-            port,
-            bytes,
-            error: bytes < 0,
-            suspicious: BLACKLISTED_IPS.has(ip) || BLACKLISTED_PORTS.has(port) || bytes > 8192,
-            thread: get_thread_name(),
-            threadId: Process.getCurrentThreadId(),
-            processId: Process.id,
-            tags: tagSuspicious(ip, port, fn, bytes),
+          const event = buildEvent({
             metadata,
-            timestamp: new Date().toISOString()
-          };
+            action: this.fn,
+            args: {
+              fd: this.fd,
+              ip,
+              port,
+              bytes,
+              error: bytes < 0
+            },
+            suspicious: BLACKLISTED_IPS.has(ip) || BLACKLISTED_PORTS.has(port) || bytes > 8192,
+            tags: tagSuspicious(ip, port, this.fn, bytes)
+          });
 
-          log(ev);
-          console.log(`[${metadata.name}] ${fn}(${this.fd}) → ${bytes} bytes to ${ip}:${port}`);
+          log(event);
+          console.log(`[hook_socket_io] ${this.fn}(${this.fd}) → ${bytes} bytes to ${ip}:${port}`);
         }
       });
     }
 
     log(buildEvent({ metadata, action: "hook_loaded" }));
-    send({ type: "hook_loaded", hook: metadata.name, java: false });
+    send({ type: "hook_loaded", hook: metadata.name });
     console.log(`[+] ${metadata.name} initialized`);
   } catch (e) {
-    console.error(`[${metadata.name}] setup failed: ${e}`);
+    console.error(`[hook_socket_io] Initialization failed: ${e}`);
   }
 })();

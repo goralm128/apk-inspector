@@ -1,7 +1,8 @@
 ---
 category_score:
-
-  # Behavior categories
+  phishing: 25
+  privacy: 20
+  surveillance: 20
   crypto_usage: 12
   reflection: 10
   dex_loading: 15
@@ -30,103 +31,88 @@ category_score:
   cloud_abuse: 22
 
 tag_score:
-  # Malware-specific
-  banker: 20
-  dropper: 15
-  stealer: 18
-
-  # Network and exfiltration
-  c2: 20
-  dropzone: 10
-  upload: 10
-  exfiltration: 20
-  http: 10
-  dns: 10
-  ip_address: 10
-  blacklisted_ip: 15
-  network: 8
+  data: 6
+  fake_login: 10
+  foreground_service: 6
+  keylogger: 12
+  data_leak: 10
+  banking: 10
+  microphone: 10
+  camera: 10
+  heartbeat: 8
+  persistence: 10
+  frequency: 6
+  suspicious: 6
+  token: 8
+  key: 8
+  banker: 15
+  dropper: 10
+  stealer: 12
+  c2: 15
+  dropzone: 8
+  upload: 8
+  exfiltration: 15
+  http: 8
+  dns: 8
+  ip_address: 8
+  blacklisted_ip: 12
+  network: 6
   external: 4
-  mitm: 15
-  ssl_unpinned: 15
-
-  # Crypto / TLS
-  tls: 10
-  openssl: 10
-  encrypted: 10
-  unencrypted: 10
-  crypto: 10
+  mitm: 12
+  ssl_unpinned: 12
+  tls: 8
+  openssl: 8
+  encrypted: 8
+  unencrypted: 4
+  crypto: 8
   base64: 4
-  entropy: 8
-  weak_crypto: 20
-  short_key: 12
-  ecb: 20
-  iv: 10
-
-  # Runtime behavior
-  dex: 10
-  dex_load: 12
-  code_injection: 20
-  jni: 10
-  hooking: 15
-  libc: 10
-  native: 10
-  frida: 15
-  reflection: 10
-  automation: 12
-  obfuscation: 10
-  xor: 10
-  debug_build: 8
-
-  # UI and abuse
-  overlay: 10
-  accessibility: 10
-  clickjacking: 10
-  phishing: 15
-  ui_hijack: 15
-  system_alert: 8
-  webview_abuse: 10
-
-  # Credential and auth
-  su: 15
-  root: 15
-  privilege: 10
-  token: 10
-  auth: 10
+  entropy: 6
+  weak_crypto: 12
+  short_key: 8
+  ecb: 12
+  iv: 6
+  dex: 8
+  dex_load: 10
+  code_injection: 15
+  jni: 8
+  hooking: 12
+  native: 8
+  frida: 12
+  reflection: 8
+  automation: 8
+  obfuscation: 8
+  xor: 8
+  debug_build: 6
+  overlay: 8
+  accessibility: 8
+  clickjacking: 8
+  phishing: 12
+  ui_hijack: 12
+  system_alert: 6
+  webview_abuse: 8
+  su: 10
+  root: 10
+  privilege: 8
+  auth: 8
   jwt: 10
-  key: 10
-  secret: 10
-  sensitive: 10
-  password: 12
-  credential: 10
-  oauth_token: 15
-
-  # Cloud-related
-  aws_key: 20
-  gcp_key: 20
-  firebase_url: 12
-
-  # Filesystem and misc
-  filesystem: 8
-  system: 8
-  write: 5
-  adb: 10
-  signing_bypass: 15
-  keystore: 12
-  clipboard: 10
-  sms: 10
-  inbox: 10
-  accessibility_event: 12
-
-  # Threat techniques
-  evasion: 10
-  keylogger: 20
-  spyware: 15
-  tracker: 10
-  playprotect_bypass: 15
-  native_exec: 15
-  dex_reflection: 12
-  turkish_strings: 12
-  gate_php: 20
+  secret: 8
+  sensitive: 8
+  password: 10
+  credential: 8
+  filesystem: 6
+  system: 6
+  write: 4
+  adb: 8
+  signing_bypass: 12
+  keystore: 10
+  clipboard: 8
+  sms: 8
+  accessibility_event: 10
+  evasion: 8
+  tracker: 8
+  native_exec: 12
+  dex_reflection: 10
+  gate_php: 12
 
 severity_score:
   low: 5

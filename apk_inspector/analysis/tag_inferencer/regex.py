@@ -1,9 +1,9 @@
-from typing import Dict, List, Any
 import json
-
 import re
+from typing import Dict, List, Any
+from apk_inspector.analysis.tag_inferencer.base import BaseTagInferencer
 
-class TagInferencer:
+class RegexTagInferencer(BaseTagInferencer):
     def __init__(self, tag_rules: Dict[str, List[str]], use_regex: bool = True):
         self.tag_rules = tag_rules
         self.use_regex = use_regex
@@ -14,14 +14,11 @@ class TagInferencer:
 
         for tag, patterns in self.tag_rules.items():
             for pattern in patterns:
-                if self.use_regex:
-                    if re.search(pattern, event_str):
-                        inferred_tags.append(tag)
-                        break
-                else:
-                    if pattern in event_str:
-                        inferred_tags.append(tag)
-                        break
+                if self.use_regex and re.search(pattern, event_str):
+                    inferred_tags.append(tag)
+                    break
+                elif not self.use_regex and pattern in event_str:
+                    inferred_tags.append(tag)
+                    break
 
         return list(set(inferred_tags))
-

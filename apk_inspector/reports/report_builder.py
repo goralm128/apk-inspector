@@ -4,12 +4,14 @@ from pathlib import Path
 from typing import List, Dict, Any, Tuple
 from dataclasses import asdict, is_dataclass
 
-from apk_inspector.reports.models import Event, Verdict, YaraMatchModel, TriggeredRuleResult
+from apk_inspector.reports.models import Event, Verdict, TriggeredRuleResult
 from apk_inspector.reports.summary.dynamic_summary import summarize_dynamic_events
 from apk_inspector.rules.rule_engine import RuleEngine
-from apk_inspector.utils.event_utils import aggregate_events
+from apk_inspector.utils.event_processing_utils import aggregate_events
 from apk_inspector.utils.logger import get_logger
 from apk_inspector.utils.yara_utils import serialize_yara_models, ensure_yara_models
+from apk_inspector.reports.yara_match_model import YaraMatchModel
+from apk_inspector.analysis.static.static_analysis_result import StaticAnalysisResult
 
 logger = get_logger()
 
@@ -55,8 +57,10 @@ class APKReportBuilder:
             self.verdict.score += hook_result.get("score", 0)
             self.verdict.label = hook_result.get("verdict", self.verdict.label)
 
-    def set_static_analysis(self, yara_matches: List[Dict[str, Any]], static_result: Dict[str, Any]) -> None:
-        self.static_analysis = static_result.to_dict() if hasattr(static_result, "to_dict") else static_result
+    def set_static_analysis_result(self, result: StaticAnalysisResult) -> None:
+        self.static_analysis = result.to_dict()
+
+    def set_yara_matches(self, yara_matches: List[Dict[str, Any]]) -> None:
         self.yara_matches = ensure_yara_models(yara_matches)
 
     def _get_hashes(self) -> Dict[str, str]:
@@ -110,32 +114,27 @@ class APKReportBuilder:
         rule_results = getattr(verdict, "triggered_rule_results", [])
         logger.info(f"[{self.package}] Verdict: {verdict.label} | Score: {verdict.score}")
         return aggregated_events, verdict, rule_results
-
-    def _assemble_report(
-        self, aggregated_events: List[Dict[str, Any]], verdict: Verdict, rule_results: List[TriggeredRuleResult]
-    ) -> Dict[str, Any]:
-        dynamic_summary = self._summarize_events()
-        hook_coverage_percent = self._calculate_hook_coverage_percent()
-
+    
+    def _build_static_section(self) -> Dict[str, Any]:
         return {
-            "apk_metadata": {
-                "package_name": self.package,
-                "apk_name": self.apk_path.name,
-                "apk_path": str(self.apk_path),
-                "analyzed_at": datetime.now(timezone.utc).isoformat(),
-                "hash": self._get_hashes(),
-                "generated_by": "apk_inspector v1.0"
-            },
             "static_analysis": self.static_analysis,
-            "yara_matches": serialize_yara_models(self.yara_matches),
+            "yara_matches": serialize_yara_models(self.yara_matches)
+        }
+
+    def _build_dynamic_section(self, aggregated_events: List[Dict[str, Any]]) -> Dict[str, Any]:
+        return {
             "dynamic_analysis": {
                 "original_events": self._event_dicts(),
                 "aggregated_events": aggregated_events,
-                "summary": dynamic_summary
+                "summary": self._summarize_events()
             },
-            "triggered_rule_results": [asdict(r) for r in rule_results],
             "hook_event_counts": self.hook_event_counts,
-            "hook_coverage_percent": hook_coverage_percent,
+            "hook_coverage_percent": self._calculate_hook_coverage_percent()
+        }
+
+    def _build_summary_section(self, verdict: Verdict, rule_results: List[TriggeredRuleResult]) -> Dict[str, Any]:
+        return {
+            "triggered_rule_results": [asdict(r) for r in rule_results],
             "report_summary": {
                 "classification": {
                     "verdict": verdict.label,
@@ -154,7 +153,28 @@ class APKReportBuilder:
             }
         }
 
+
+    def _assemble_report(
+        self, aggregated_events: List[Dict[str, Any]], verdict: Verdict, rule_results: List[TriggeredRuleResult]
+    ) -> Dict[str, Any]:
+        return {
+            "apk_metadata": {
+                "package_name": self.package,
+                "apk_name": self.apk_path.name,
+                "apk_path": str(self.apk_path),
+                "analyzed_at": datetime.now(timezone.utc).isoformat(),
+                "hash": self._get_hashes(),
+                "generated_by": "apk_inspector v1.0"
+            },
+            **self._build_static_section(),
+            **self._build_dynamic_section(aggregated_events),
+            **self._build_summary_section(verdict, rule_results)
+        }
+
     def build(self) -> Dict[str, Any]:
+        
+        '''Build the full APK report by evaluating all components and assembling the final report structure.'''
+        
         logger.info(f"[{self.package}] Building full report...")
         try:
             aggregated_events, verdict, rule_results = self._evaluate()

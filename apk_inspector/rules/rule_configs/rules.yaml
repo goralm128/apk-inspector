@@ -1,25 +1,37 @@
+# Sensitive File Access
 - id: R1
   description: "Sensitive file accessed — token, secret, or key"
   category: data_leak
   weight: 6
   severity: medium
   condition: >
-    (isinstance(event.get("tags"), list) and any(tag in event["tags"] for tag in ["token", "key", "sensitive", "secret"]))
-    or (isinstance(event.get("path"), str) and any(k in event["path"] for k in ["token", "secret", "key"]))
+    any(tag in event.get("tags", []) for tag in ["token", "key", "sensitive", "secret"])
+    or any(k in event.get("path", "") for k in ["token", "secret", "key"])
   tags: ["token", "key", "filesystem", "sensitive", "secret"]
   cvss: 6.0
 
-- id: R2
-  description: "Connection to public or blacklisted IP address"
+# Network Events
+- id: R2a
+  description: "Connection to public IP address (non-private)"
   category: network
   weight: 4
   severity: medium
   condition: >
     event.get("address", {}).get("is_private") is False
-    or "blacklisted_ip" in (event.get("tags") or [])
-  tags: ["network", "external", "blacklisted_ip"]
+  tags: ["network", "external"]
   cvss: 4.5
 
+- id: R2b
+  description: "Connection to blacklisted IP or domain"
+  category: network
+  weight: 5
+  severity: high
+  condition: >
+    "blacklisted_ip" in event.get("tags", [])
+  tags: ["network", "external", "blacklisted_ip"]
+  cvss: 7.0
+
+# Exfiltration and Privilege Escalation
 - id: R3
   description: "High-volume data write outside app storage"
   category: exfiltration
@@ -42,6 +54,7 @@
   tags: ["filesystem", "system", "privilege"]
   cvss: 6.3
 
+# C2 and Domain Communication
 - id: R5
   description: "C2 communication to known suspicious domain"
   category: c2
@@ -49,10 +62,11 @@
   severity: high
   condition: >
     isinstance(event.get("data"), (str, bytes))
-    and any(d in str(event["data"]) for d in ["example.com", "evil.org", "malicious.net"])
+    and any(d in event.get("data", "") for d in ["example.com", "evil.org", "malicious.net"])
   tags: ["c2", "dns", "ip_address", "network"]
   cvss: 6.5
 
+# UI Abuse and Reflection
 - id: R6
   description: "Accessibility service abuse — UI takeover possible"
   category: accessibility_abuse
@@ -60,7 +74,7 @@
   severity: high
   condition: >
     event.get("category", "") == "accessibility_abuse"
-    or (isinstance(event.get("tags"), list) and any(tag in event["tags"] for tag in ["accessibility", "overlay", "clickjacking"]))
+    or any(tag in event.get("tags", []) for tag in ["accessibility", "overlay", "clickjacking"])
   tags: ["accessibility", "overlay", "clickjacking"]
   cvss: 7.2
 
@@ -70,19 +84,20 @@
   weight: 6
   severity: high
   condition: >
-    "reflection" in (event.get("tags") or [])
-    or ("invoke" in (event.get("hook") or "").lower())
+    "reflection" in event.get("tags", [])
+    or "invoke" in event.get("hook", "").lower()
   tags: ["reflection", "evasion"]
   cvss: 6.9
 
+# Dynamic Code and Frida
 - id: R8
   description: "Dynamic loading of code — dex or native libraries"
   category: dex_loading
   weight: 6
   severity: high
   condition: >
-    (isinstance(event.get("hook"), str) and any(k in event["hook"] for k in ["dlopen", "Class.forName", "System.loadLibrary"]))
-    or ("dex_load" in (event.get("tags") or []))
+    any(k in event.get("hook", "") for k in ["dlopen", "Class.forName", "System.loadLibrary"])
+    or "dex_load" in event.get("tags", [])
   tags: ["code_injection", "jni", "native", "dex_load"]
   cvss: 7.0
 
@@ -93,19 +108,21 @@
   severity: high
   condition: >
     "frida" in str(event.get("args", {}).get("arg0", ""))
-    or "gum-js-loop" in (event.get("hook") or "")
+    or "gum-js-loop" in event.get("hook", "")
     or "rpc.exports" in str(event.get("stack", ""))
   tags: ["frida", "evasion", "hooking"]
   cvss: 7.5
 
+# Cryptography
 - id: R10
   description: "Use of crypto-related native libraries"
   category: crypto_usage
   weight: 5
   severity: medium
   condition: >
-    (isinstance(event.get("tags"), list) and any(tag in event["tags"] for tag in ["tls", "openssl"]))
-    or (isinstance(event.get("hook"), str) and ("ssl" in event["hook"].lower() or "tls" in event["hook"].lower()))
+    any(tag in event.get("tags", []) for tag in ["tls", "openssl"])
+    or "ssl" in event.get("hook", "").lower()
+    or "tls" in event.get("hook", "").lower()
   tags: ["tls", "openssl"]
   cvss: 6.0
 
@@ -115,7 +132,7 @@
   weight: 3
   severity: low
   condition: >
-    "tls" in (event.get("tags") or [])
+    "tls" in event.get("tags", [])
     and not event.get("metadata", {}).get("cert_pinning", False)
   tags: ["tls", "network", "crypto", "unencrypted"]
   cvss: 3.1
@@ -126,7 +143,78 @@
   weight: 7
   severity: critical
   condition: >
-    isinstance(event.get("tags"), list)
-    and all(tag in event["tags"] for tag in ["native", "encrypted", "network"])
+    all(tag in event.get("tags", []) for tag in ["native", "encrypted", "network"])
   tags: ["exfiltration", "encrypted", "network", "native"]
   cvss: 8.1
+
+# Banking Trojan Behavior
+- id: R17
+  description: "Fake login overlay activity — phishing attempt"
+  category: phishing
+  weight: 8
+  severity: critical
+  condition: >
+    "overlay" in event.get("tags", []) and "login" in event.get("tags", [])
+  tags: ["overlay", "phishing", "fake_login", "banking"]
+  cvss: 9.1
+
+- id: R18
+  description: "Accessibility combined with foreground service — fraud automation"
+  category: accessibility_abuse
+  weight: 7
+  severity: high
+  condition: >
+    "accessibility" in event.get("tags", []) and "foreground_service" in event.get("tags", [])
+  tags: ["accessibility", "foreground_service", "banking"]
+  cvss: 7.8
+
+- id: R19
+  description: "Monitors keyboard or clipboard input — credential theft"
+  category: data_leak
+  weight: 7
+  severity: critical
+  condition: >
+    "keylogging" in event.get("tags", []) or "clipboard" in event.get("tags", [])
+  tags: ["keylogging", "clipboard", "data_leak", "banking"]
+  cvss: 8.9
+
+# Spyware Behavior
+- id: R20
+  description: "Reads user contacts or SMS — privacy violation"
+  category: privacy
+  weight: 6
+  severity: high
+  condition: >
+    "sms_read" in event.get("tags", []) or "contacts_access" in event.get("tags", [])
+  tags: ["sms", "contacts", "spyware", "privacy"]
+  cvss: 7.1
+
+- id: R21
+  description: "Microphone or camera access without user interaction"
+  category: surveillance
+  weight: 8
+  severity: critical
+  condition: >
+    "camera" in event.get("tags", []) or "microphone" in event.get("tags", [])
+  tags: ["surveillance", "microphone", "camera", "spyware"]
+  cvss: 9.0
+
+- id: R22
+  description: "Periodic exfiltration to remote endpoint"
+  category: exfiltration
+  weight: 6
+  severity: high
+  condition: >
+    "periodic_upload" in event.get("tags", []) or "heartbeat" in event.get("tags", [])
+  tags: ["exfiltration", "spyware", "heartbeat", "persistence"]
+  cvss: 7.4
+
+- id: R23
+  description: "High-frequency filesystem access"
+  category: exfiltration
+  weight: 5
+  severity: medium
+  condition: >
+    isinstance(event.get("metadata", {}), dict) and event.get("category") == "filesystem" and event.get("metadata", {}).get("count", 0) > 50
+  tags: ["filesystem", "frequency", "suspicious"]
+  cvss: 5.5

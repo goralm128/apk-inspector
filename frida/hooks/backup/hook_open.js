@@ -38,7 +38,7 @@
         onEnter(args) {
           this.fn = fn;
           const argIndex = (fn === "openat" || fn === "openat2") ? 1 : 0;
-          this.path = readSafeUtf8(args[argIndex]);
+          this.path = normalizePath(readSafeUtf8(args[argIndex]));
           this.ctx = this.context;
         },
         onLeave(retval) {

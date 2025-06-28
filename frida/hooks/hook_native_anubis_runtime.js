@@ -1,5 +1,12 @@
 'use strict';
 
+/**
+ * hook_native_anubis_runtime.js
+ *
+ * Hooks native APIs used by Anubis and similar malware families.
+ * Focuses on execution, memory, and network operations: execve, dlopen, send, mmap, etc.
+ */
+
 (async function () {
   const metadata = {
     name: 'hook_native_anubis_runtime',
@@ -18,25 +25,33 @@
   ];
 
   const log = await waitForLogger(metadata);
-
   const MAX_PREVIEW_BYTES = 100;
 
   const safeReadCString = (ptr) => {
-    try {
-      return ptr.readCString();
-    } catch (_) {
-      return '<unreadable>';
-    }
+    try { return ptr.readCString(); }
+    catch (_) { return '<unreadable>'; }
   };
 
   const formatBacktrace = (ctx) => {
     try {
       return Thread.backtrace(ctx, Backtracer.ACCURATE)
         .map(DebugSymbol.fromAddress)
+        .slice(0, 8)
         .map(sym => `${sym.moduleName || '?'}!${sym.name || '?'}@${sym.address}`);
     } catch (_) {
       return ['<no backtrace>'];
     }
+  };
+
+  const determineTags = (fn, preview) => {
+    const tags = [fn];
+    const lc = preview.toLowerCase();
+    if (fn.startsWith("exec") || lc.includes("su") || lc.includes("sh")) tags.push("proc_exec");
+    if (fn === "dlopen" && lc.includes("frida")) tags.push("anti_frida");
+    if (["mmap", "mprotect"].includes(fn)) tags.push("memory_access");
+    if (["send", "recv", "connect"].includes(fn)) tags.push("network_io");
+    if (["strcmp", "strncmp", "memcmp"].includes(fn) && lc.includes("frida")) tags.push("frida_check");
+    return tags;
   };
 
   const hookFunction = async (fnName) => {
@@ -47,23 +62,43 @@
         this.ctx = this.context;
         this.preview = '';
 
-        if (['execve', 'system', 'popen'].includes(fnName)) {
-          this.preview = safeReadCString(args[0]);
-        } else if (['send', 'recv'].includes(fnName)) {
-          try {
-            const preview = Memory.readUtf8String(args[1], MAX_PREVIEW_BYTES);
-            this.preview = preview.replace(/\s+/g, ' ');
-          } catch {
-            this.preview = '<unreadable>';
+        try {
+          switch (fnName) {
+            case 'execve':
+            case 'system':
+            case 'popen':
+              this.preview = safeReadCString(args[0]);
+              break;
+            case 'dlopen':
+              this.preview = safeReadCString(args[0]);
+              break;
+            case 'send':
+            case 'recv':
+              this.preview = Memory.readUtf8String(args[1], MAX_PREVIEW_BYTES).replace(/\s+/g, ' ');
+              break;
+            case 'strcmp':
+            case 'strncmp':
+            case 'memcmp':
+              this.preview = [
+                safeReadCString(args[0]),
+                safeReadCString(args[1])
+              ].join(' ↔ ');
+              break;
+            case 'open':
+              this.preview = safeReadCString(args[0]);
+              break;
+            default:
+              this.preview = "<preview unavailable>";
           }
-        } else if (fnName === 'dlopen') {
-          this.preview = safeReadCString(args[0]);
-        } else if (['strcmp', 'strncmp', 'memcmp'].includes(fnName)) {
-          this.preview = [safeReadCString(args[0]), safeReadCString(args[1])].join(' ↔ ');
+        } catch {
+          this.preview = "<unreadable>";
         }
       },
       onLeave(retval) {
         const caller = DebugSymbol.fromAddress(this.returnAddress) || {};
+        const tags = determineTags(this.fnName, this.preview);
+        const suspicious = true;
+
         const event = buildEvent({
           metadata,
           action: this.fnName,
@@ -77,7 +112,8 @@
             function: this.fnName,
             preview: this.preview
           },
-          suspicious: true
+          suspicious,
+          tags
         });
 
         log(event);

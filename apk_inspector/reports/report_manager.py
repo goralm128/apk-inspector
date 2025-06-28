@@ -5,7 +5,7 @@ from pathlib import Path
 from apk_inspector.reports.models import ApkSummary
 from apk_inspector.reports.report_saver import ReportSaver
 from apk_inspector.utils.logger import get_logger
-from apk_inspector.visual.per_apk_dashboard import generate_index_page
+from apk_inspector.visual.dashboard_generator import generate_index_page
 
 from apk_inspector.reports.full_report_aggregator import FullReportAggregator
 from apk_inspector.reports.visualization_generator import VisualizationGenerator
