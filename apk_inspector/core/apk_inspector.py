@@ -125,14 +125,20 @@ class APKInspector:
         if not decompiled_dir.exists() or not any(decompiled_dir.iterdir()):
             self.logger.info(f"[{package_name}] Decompiled folder missing or empty. Starting decompilation...")
             self.workspace.create_decompile_dir(package_name)
-            decompile_apk(self.apk_path, decompiled_dir)
+            self.decompiled_dir, self.decompiler_backend, self.androguard_apk = decompile_apk(self.apk_path, decompiled_dir)
         else:
             self.logger.info(f"[{package_name}] Reusing existing decompiled code.")
+            self.decompiled_dir = decompiled_dir
+            self.decompiler_backend = "apktool"
+            self.androguard_apk = None
 
     def _perform_static_analysis(self, package_name: str):
-        decompiled_dir = self.workspace.get_decompile_path(package_name)
-        self.logger.debug(f"[{package_name}] Running static analysis...")
-        return self.static_analyzer.analyze(self.apk_path, decompiled_dir)
+        self.logger.debug(f"[{package_name}] Running static analysis with backend: {self.decompiler_backend}")
+        return self.static_analyzer.analyze(
+            apk_path=self.apk_path,
+            decompiled_path=self.decompiled_dir,
+            backend=self.decompiler_backend
+        )
 
     def _run_yara_scan(self, package_name: str) -> List:
         decompiled_dir = self.workspace.get_decompile_path(package_name)

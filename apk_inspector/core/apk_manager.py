@@ -5,25 +5,25 @@ from typing import List, Optional
 
 from apk_inspector.utils.apk_utils import extract_package_name_from_filename
 
-
 # Safe Androguard import wrapper
 try:
     from androguard.core.bytecodes.apk import APK  # type: ignore
     ANDROGUARD_AVAILABLE = True
-except ModuleNotFoundError:
-    ANDROGUARD_AVAILABLE = False
+except ImportError as e:
     APK = None  # type: ignore
+    ANDROGUARD_AVAILABLE = False
+    _androguard_import_error = e  # Save for later logging
 
 class APKManager:
-    _installed_cache = set()  # Track installed packages per session
-    """
-    Manages APK metadata extraction and install/uninstall operations via ADB.
-    """
+    _installed_cache = set()
 
     def __init__(self, logger=None):
         self.logger = logger
         if not ANDROGUARD_AVAILABLE and self.logger:
-            self.logger.warning("[WARN] Androguard is not installed. Only `aapt` will be used.")
+            self.logger.warning(
+                f"[WARN] Androguard is not available. Only `aapt` will be used.\n"
+                f"Reason: {_androguard_import_error}"
+            )
 
     def get_package_name(self, apk_path: Path) -> Optional[str]:
         for extractor, label in [
@@ -68,7 +68,7 @@ class APKManager:
             return apk.get_package()
         except Exception as ex:
             if self.logger:
-                self.logger.warning(f"[WARN] Androguard failed for {apk_path.name}: {ex}")
+                self.logger.warning(f"[WARN] Androguard failed to extract package from {apk_path.name}: {ex}")
         return None
 
     def uninstall_package(self, package_name: str):
@@ -87,14 +87,7 @@ class APKManager:
         if package_name in APKManager._installed_cache:
             if self.logger:
                 self.logger.info(f"[✓] {package_name} is already installed. Skipping reinstall.")
-            APKManager._installed_cache.add(package_name)
             return True
-        if not package_name:
-            package_name = self.get_package_name(apk_path)
-        if not package_name:
-            if self.logger:
-                self.logger.warning(f"[WARN] Could not determine package name for {apk_path.name}")
-            return False
 
         self.uninstall_package(package_name)
 
@@ -107,6 +100,7 @@ class APKManager:
         )
 
         if result.returncode == 0 and "Success" in result.stdout:
+            APKManager._installed_cache.add(package_name)
             if self.logger:
                 self.logger.info(f"[✓] Installed: {apk_path.name}")
             return True
@@ -116,9 +110,6 @@ class APKManager:
             return False
 
     def install_apks_in_dir(self, apk_dir: Path) -> List[str]:
-        """
-        Installs all APKs in the directory and returns list of installed package names.
-        """
         apk_files = list(apk_dir.rglob("*.apk"))
         if self.logger and not apk_files:
             self.logger.warning(f"[!] No APKs found in {apk_dir.resolve()}")

@@ -1,4 +1,6 @@
 from pathlib import Path
+from typing import Optional, Literal
+from androguard.misc import AnalyzeAPK
 from apk_inspector.analysis.static.manifest_analyzer import analyze_manifest
 from apk_inspector.analysis.static.string_extractor import extract_suspicious_strings
 from apk_inspector.analysis.static.cert_analyzer import analyze_certificate
@@ -10,20 +12,43 @@ class StaticAnalyzer:
     def __init__(self, logger):
         self.logger = logger
 
-    def analyze(self, apk_path: Path, decompiled_path: Path) -> StaticAnalysisResult:
+    def analyze(
+        self,
+        apk_path: Path,
+        decompiled_path: Path,
+        backend: Literal["apktool", "androguard"]
+    ) -> StaticAnalysisResult:
         package_name = apk_path.stem
-        self.logger.info(f"[{package_name}] Running static analysis.")
+        self.logger.info(f"[{package_name}] Static analysis using {backend} backend")
 
         if not decompiled_path.exists():
             self.logger.error(f"[{package_name}] Decompiled path does not exist: {decompiled_path}")
             return StaticAnalysisResult()
 
-        # Analyze AndroidManifest.xml, extract permissions and components
+        # --- Manifest Analysis ---
         manifest_result = analyze_manifest(decompiled_path / "AndroidManifest.xml")
         manifest_warnings = manifest_result.pop("manifest_warnings", [])
-        
-        # Extract suspicious strings from smali files
-        suspicious_strings = extract_suspicious_strings(decompiled_path)
+
+        # --- Suspicious Strings ---
+        suspicious_strings = []
+        if backend == "apktool":
+            suspicious_strings = extract_suspicious_strings(decompiled_path)
+        elif backend == "androguard":
+            try:
+                a, d, dx = AnalyzeAPK(str(apk_path))
+                suspicious_strings = [
+                    {
+                        "type": "hardcoded_string",
+                        "match": s,
+                        "file": "classes.dex",
+                        "confidence": "medium" if len(s) > 8 else "low"
+                    }
+                    for s in a.get_strings()
+                    if s and any(c.isalnum() for c in s)
+                ]
+            except Exception as ex:
+                self.logger.warning(f"[{package_name}] Failed to extract strings using Androguard: {ex}")
+
         string_warnings = [
             {
                 "type": "suspicious_string",
@@ -33,9 +58,9 @@ class StaticAnalyzer:
             }
             for s in suspicious_strings if s["confidence"] in ("high", "medium")
         ]
-        
-        # Analyze the APK certificate
-        cert_info  = analyze_certificate(apk_path)
+
+        # --- Certificate Analysis ---
+        cert_info = analyze_certificate(apk_path)
         cert_warnings = []
         if cert_info.get("debug_cert"):
             cert_warnings.append({"type": "debug_cert", "message": "Signed with debug certificate"})
@@ -46,20 +71,18 @@ class StaticAnalyzer:
 
         static_warnings = manifest_warnings + string_warnings + cert_warnings
 
-        # Analyze res/values/strings.xml
-        self.logger.info(f"[{package_name}] Analyzing strings.xml for sensitive data.")
-        strings_xml_path = decompiled_path / "res" / "values" / "strings.xml"
+        # --- Resource Strings (ApkTool only) ---
         strings_xml_issues = []
-        if strings_xml_path.exists():
-            self.logger.info(f"[{package_name}] Analyzing strings.xml for sensitive data.")
-            strings_xml_issues = analyze_strings_xml(strings_xml_path)
-            
-        # Scan logs for sensitive information
-        self.logger.info(f"[{package_name}] Scanning logs for secrets.")
-        log_secrets = scan_logs_for_secrets(decompiled_path)
+        if backend == "apktool":
+            strings_xml_path = decompiled_path / "res" / "values" / "strings.xml"
+            if strings_xml_path.exists():
+                strings_xml_issues = analyze_strings_xml(strings_xml_path)
 
-        self.logger.debug(f"[{package_name}] Static analysis complete.")
-        
+        # --- Log Scanner (ApkTool only) ---
+        log_secrets = scan_logs_for_secrets(decompiled_path) if backend == "apktool" else []
+
+        self.logger.debug(f"[{package_name}] Static analysis completed successfully.")
+
         return StaticAnalysisResult(
             manifest_analysis=manifest_result,
             static_warnings=static_warnings,
@@ -68,4 +91,3 @@ class StaticAnalyzer:
             strings_xml_issues=strings_xml_issues,
             log_leaks=log_secrets
         )
-

@@ -4,6 +4,7 @@ from cli.test_cli import parse_args
 from pathlib import Path
 
 def test_parse_args_valid(monkeypatch):
+    """Test parse_args with all required and optional arguments."""
     test_args = [
         "prog",
         "--hook", "readwrite",
@@ -26,6 +27,7 @@ def test_parse_args_valid(monkeypatch):
     assert args.verbose is True
 
 def test_parse_args_missing_hook(monkeypatch):
+    """Test parse_args exits when required hook is missing."""
     test_args = ["prog"]
     monkeypatch.setattr("sys.argv", test_args)
 
@@ -33,6 +35,7 @@ def test_parse_args_missing_hook(monkeypatch):
         parse_args(["readwrite", "network"])
 
 def test_parse_args_defaults(monkeypatch):
+    """Test parse_args uses default values when optional args are missing."""
     test_args = [
         "prog",
         "--hook", "network"
@@ -49,6 +52,7 @@ def test_parse_args_defaults(monkeypatch):
     assert args.verbose is False
 
 def test_invalid_hook(monkeypatch):
+    """Test parse_args exits on invalid hook value."""
     test_args = [
         "prog",
         "--hook", "nonexistent"

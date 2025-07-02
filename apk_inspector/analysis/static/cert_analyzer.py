@@ -46,11 +46,11 @@ def analyze_certificate(apk_path: Path) -> dict:
 
             weak = any(algo in sig_algo.upper() for algo in WEAK_ALGOS) if sig_algo else False
             debug = bool(DEBUG_CN_PATTERN.search(owner or ""))
-            expired_cert = valid_to_dt and valid_to_dt < now
+            expired_cert = valid_to_dt < now if valid_to_dt else False
 
-            weak_algo_found |= weak
-            debug_cert_found |= debug
-            expired |= expired_cert
+            weak_algo_found |= bool(weak)
+            debug_cert_found |= bool(debug)
+            expired |= bool(expired_cert)
 
             parsed_certs.append({
                 "owner": owner,
@@ -76,3 +76,4 @@ def analyze_certificate(apk_path: Path) -> dict:
     except Exception as ex:
         logger.error(f"[CERT ANALYZER] Failed to analyze certificate for {apk_path}: {ex}")
         return {}
+
