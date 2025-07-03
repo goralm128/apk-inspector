@@ -6,6 +6,7 @@ from apk_inspector.analysis.static.string_extractor import extract_suspicious_st
 from apk_inspector.analysis.static.cert_analyzer import analyze_certificate
 from apk_inspector.analysis.static.res_parser import analyze_strings_xml
 from apk_inspector.analysis.static.log_scanner import scan_logs_for_secrets
+from apk_inspector.analysis.static.payload_scanner import find_suspicious_payloads
 from apk_inspector.analysis.static.static_analysis_result import StaticAnalysisResult
 
 class StaticAnalyzer:
@@ -31,23 +32,10 @@ class StaticAnalyzer:
 
         # --- Suspicious Strings ---
         suspicious_strings = []
-        if backend == "apktool":
-            suspicious_strings = extract_suspicious_strings(decompiled_path)
-        elif backend == "androguard":
-            try:
-                a, d, dx = AnalyzeAPK(str(apk_path))
-                suspicious_strings = [
-                    {
-                        "type": "hardcoded_string",
-                        "match": s,
-                        "file": "classes.dex",
-                        "confidence": "medium" if len(s) > 8 else "low"
-                    }
-                    for s in a.get_strings()
-                    if s and any(c.isalnum() for c in s)
-                ]
-            except Exception as ex:
-                self.logger.warning(f"[{package_name}] Failed to extract strings using Androguard: {ex}")
+        suspicious_strings = extract_suspicious_strings(
+            source=apk_path if backend == "androguard" else decompiled_path,
+            backend=backend
+        )
 
         string_warnings = [
             {
@@ -68,8 +56,10 @@ class StaticAnalyzer:
             cert_warnings.append({"type": "weak_signature", "message": "Uses SHA1 — weak signature algorithm"})
         if cert_info.get("has_expired_cert"):
             cert_warnings.append({"type": "expired_cert", "message": "Certificate is expired"})
+            
+        payload_warnings = find_suspicious_payloads(decompiled_path, self.logger)
 
-        static_warnings = manifest_warnings + string_warnings + cert_warnings
+        static_warnings = manifest_warnings + string_warnings + cert_warnings + payload_warnings
 
         # --- Resource Strings (ApkTool only) ---
         strings_xml_issues = []
