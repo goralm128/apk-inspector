@@ -1,10 +1,13 @@
 import shutil
 import subprocess
 from pathlib import Path
-from typing import Optional, Tuple, TYPE_CHECKING, Union
+from typing import Optional, Tuple, List,TYPE_CHECKING
+from collections import Counter
 from lxml import etree
 import logging
 import os
+import zipfile
+
 
 # Conditional import only for type hints
 if TYPE_CHECKING:
@@ -64,55 +67,120 @@ def decompile_apk(apk_path: Path, output_dir: Path) -> Tuple[Path, str, Optional
         raise
 
 
+def is_safe_path(root: Path, target: Path) -> bool:
+    try:
+        return root.resolve(strict=False) in target.resolve(strict=False).parents or root.resolve() == target.resolve()
+    except Exception:
+        return False
+
+def safe_write_text(path: Path, content: str, label: str = ""):
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(content, encoding="utf-8")
+        logger.info(f"[Androguard] Wrote text: {path} {label}")
+    except Exception as e:
+        logger.warning(f"[Androguard] Failed to write text file {path.name}: {e} {label}")
+
+def safe_write_bytes(path: Path, content: bytes, label: str = ""):
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(content)
+        logger.info(f"[Androguard] Wrote binary: {path} ({len(content)} bytes) {label}")
+    except Exception as e:
+        logger.warning(f"[Androguard] Failed to write binary file {path.name}: {e} {label}")
+
+
 def analyze_apk_with_androguard(apk_path: Path, output_dir: Path) -> Tuple[Path, str, "APK"]:
-    """
-    Analyze an APK file using Androguard and extract key files to the output directory.
+    logger.info(f"[Androguard] Starting analysis: {apk_path}")
+    apk_obj, _, _ = AnalyzeAPK(str(apk_path))
 
-    Returns:
-        Tuple: (decompiled_dir, "androguard", APK object)
-    """
-    a, d, dx = AnalyzeAPK(str(apk_path))
+    ext_counter = Counter()
 
-    # Save AndroidManifest.xml
-    manifest_path = output_dir / "AndroidManifest.xml"
-    manifest_xml = a.get_android_manifest_xml()
+    # --- AndroidManifest.xml ---
+    manifest_xml = apk_obj.get_android_manifest_xml()
     if manifest_xml is not None:
-        manifest_path.write_text(
-            etree.tostring(manifest_xml, pretty_print=True, encoding="unicode"),
-            encoding="utf-8"
-        )
-
-    # Save package metadata
-    (output_dir / "package_info.txt").write_text(
-        f"Package: {a.package}\n"
-        f"Main Activity: {a.get_main_activity()}\n"
-        f"Permissions: {a.get_permissions()}\n",
-        encoding="utf-8"
-    )
-
-    # Save DEX files for further analysis or YARA scanning
-    for idx, dex in enumerate(a.get_all_dex()):
-        dex_path = output_dir / f"classes{'' if idx == 0 else idx + 1}.dex"
-        dex_path.write_bytes(dex)
-
-    # Save assets/files — some YARA rules look for payloads or hidden scripts
-    files = a.get_files()
-    if isinstance(files, dict):  # Older API
-        iterable = files.items()
-    elif isinstance(files, list):  # Newer API
-        iterable = files
+        xml_str = etree.tostring(manifest_xml, pretty_print=True, encoding="unicode")
+        safe_write_text(output_dir / "AndroidManifest.xml", xml_str, label="(AndroidManifest)")
     else:
-        iterable = []
+        logger.warning("[Androguard] Failed to extract AndroidManifest.xml")
 
-    for entry in iterable:
-        try:
+    # --- Package Info ---
+    package_info = (
+        f"Package: {apk_obj.package}\n"
+        f"Main Activity: {apk_obj.get_main_activity()}\n"
+        f"Permissions: {apk_obj.get_permissions()}\n"
+    )
+    safe_write_text(output_dir / "package_info.txt", package_info, label="(metadata)")
+
+    # --- DEX Files ---
+    try:
+        dex_files = apk_obj.get_all_dex()
+        if not dex_files:
+            logger.warning("[Androguard] No DEX files returned by get_all_dex()")
+            with apk_path.open("rb") as f:
+                if b'dex\n035' in f.read():
+                    logger.warning("[Androguard] DEX header found in APK binary")
+        else:
+            for idx, dex in enumerate(dex_files):
+                name = f"classes{'' if idx == 0 else idx+1}.dex"
+                path = output_dir / name
+                safe_write_bytes(path, dex, label="(DEX)")
+                ext_counter[".dex"] += 1
+    except Exception as e:
+        logger.error(f"[Androguard] DEX extraction failed: {e}")
+
+    # --- Files via Androguard.get_files() ---
+    try:
+        files = apk_obj.get_files()
+        logger.info(f"[Androguard] get_files() returned: {type(files)}, items: {len(files) if hasattr(files, '__len__') else '?'}")
+
+        entries = files.items() if isinstance(files, dict) else files if isinstance(files, list) else []
+        for entry in entries:
             if isinstance(entry, tuple) and len(entry) == 2:
                 name, content = entry
-                target = output_dir / name
-                target.parent.mkdir(parents=True, exist_ok=True)
-                target.write_bytes(content)
-        except Exception as ex:
-            logger.warning(f"[Androguard] Failed to extract file entry: {ex}")
+                path = output_dir / name
+                if not is_safe_path(output_dir, path):
+                    logger.warning(f"[Androguard] Skipped unsafe path: {path}")
+                    continue
+                if not content:
+                    continue
+                safe_write_bytes(path, content, label="(file)")
+                ext_counter[Path(name).suffix.lower()] += 1
+    except Exception as ex:
+        logger.warning(f"[Androguard] Error extracting via get_files(): {ex}")
 
-    logger.info(f"Androguard analysis completed successfully: {output_dir}")
-    return output_dir, "androguard", a
+    # --- ZIP-level Fallback Extraction ---
+    try:
+        with zipfile.ZipFile(apk_path, 'r') as z:
+            for member in z.infolist():
+                zip_path = output_dir / member.filename
+
+                if not is_safe_path(output_dir, zip_path):
+                    logger.warning(f"[Zip] Skipped unsafe path: {zip_path}")
+                    continue
+
+                if zip_path.exists():
+                    continue  # Already extracted by Androguard
+
+                try:
+                    zip_path.parent.mkdir(parents=True, exist_ok=True)
+                    with z.open(member) as src, zip_path.open('wb') as dst:
+                        data = src.read()
+                        if not data:
+                            continue
+                        dst.write(data)
+                        logger.debug(f"[Zip] Extracted: {zip_path} ({len(data)} bytes)")
+                        ext_counter[Path(member.filename).suffix.lower()] += 1
+                except Exception as e:
+                    logger.warning(f"[Zip] Failed to extract {member.filename}: {e}")
+    except Exception as e:
+        logger.error(f"[Zip] ZIP-level extraction failed: {e}")
+
+    # --- Summary ---
+    total_files = sum(ext_counter.values()) + 2  # +2 for manifest + package_info
+    logger.info(f"[Androguard] Extraction summary for {apk_path.name}:")
+    logger.info(f"[Androguard] - Total files: {total_files}")
+    for ext, count in ext_counter.most_common():
+        logger.info(f"[Androguard] - {ext or '[no extension]'}: {count} file(s)")
+
+    return output_dir, "androguard", apk_obj
